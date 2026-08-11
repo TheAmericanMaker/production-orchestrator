@@ -141,6 +141,21 @@ class SQLiteShopRepository:
                 },
             )
 
+    def record_audit(
+        self,
+        *,
+        event_type: str,
+        proposal_hash: str | None,
+        details: dict[str, object],
+    ) -> None:
+        with self._connect() as connection:
+            self._append_audit(
+                connection,
+                event_type=event_type,
+                proposal_hash=proposal_hash,
+                details=details,
+            )
+
     def latest_decision(self, proposal_hash: str) -> ApprovalDecision | None:
         with self._connect() as connection:
             row = connection.execute(

@@ -6,7 +6,16 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [{ name = "Production Orchestrator Team" }]
-dependencies = []
+dependencies = [
+    "strands-agents[ollama]==1.51.0",
+]
+
+[project.scripts]
+production-orchestrator-spike = "production_orchestrator.spike:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
@@ -16,7 +25,7 @@ dev = [
 ]
 
 [tool.uv]
-package = false
+package = true
 
 [tool.pytest.ini_options]
 addopts = "-q"

@@ -2,9 +2,13 @@
 
 > A Strands-powered production scheduling agent for small embroidery and decorated-apparel shops.
 
-**Status:** Load-bearing feasibility spike  
-**Hackathon:** Agents for Humans — Professional Agents track  
+**Status:** **PARTIAL** — full Strands safety workflow passed on Ollama fallback; Bedrock execution blocked by missing AWS credentials
+
+**Hackathon:** Agents for Humans — Professional Agents track
+
 **Issue:** [#1 — validate scheduling, approval, and audit loop](https://github.com/TheAmericanMaker/production-orchestrator/issues/1)
+
+**Executed result:** Both rejection and approval stopped on a real Strands interrupt. Rejection preserved revision 1; exact approval atomically advanced the schedule and procurement task to revision 2. See [`SPIKE_VERDICT.md`](SPIKE_VERDICT.md) and [`evidence/`](evidence/).
 
 ## Problem
 
@@ -27,6 +31,12 @@ Given a synthetic shop containing a rush order, material shortage, machine-capac
 
 See [`DEVELOPMENT_CONTRACT.md`](DEVELOPMENT_CONTRACT.md) for the non-negotiable implementation and contest boundaries.
 
+## Current verdict
+
+The deterministic core and real Strands interrupt loop are operational. Twelve automated tests pass, all seven Strands tools were observed in both live runs, `FileSessionManager` persisted each session, and eight machine-evaluated workflow checks passed for rejection and approval.
+
+The overall spike is not yet fully validated because this environment has no AWS credential chain or region. The committed evidence uses `glm-5.2:cloud` through the documented Ollama fallback and explicitly marks `submission_gate_passed: false`. Full UI/application scaffolding remains gated until a Bedrock run reproduces the result.
+
 ## Spike questions
 
 | Priority | Question | Pass evidence |
@@ -42,7 +52,8 @@ Prerequisites:
 
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/)
-- AWS credentials and Bedrock model access for the Strands integration phase
+- Ollama with an accessible tool-capable model for fallback reproduction
+- AWS credentials, region, and Bedrock model access for the judged path
 
 Initial test/tooling setup:
 
@@ -51,6 +62,22 @@ uv sync
 uv run pytest
 uv run ruff check .
 ```
+
+Run independent live fallback scenarios with unused runtime directories:
+
+```bash
+uv run production-orchestrator-spike \
+  --decision reject \
+  --runtime-dir data/runtime/reject-local \
+  --report evidence/rejection-local.json
+
+uv run production-orchestrator-spike \
+  --decision approve \
+  --runtime-dir data/runtime/approve-local \
+  --report evidence/approval-local.json
+```
+
+The committed [`evidence/rejection.json`](evidence/rejection.json) and [`evidence/approval.json`](evidence/approval.json) are the audited baseline runs. Runtime databases and session files are ignored.
 
 No AWS credentials, customer information, or runtime state belong in git.
 
@@ -68,4 +95,4 @@ The team previously developed and studied BobbinBoss/Aimbroidery, an Apache-2.0 
 
 ## License
 
-Apache License 2.0. See [`LICENSE`](LICENSE).
+Apache License 2.0. See [`LICENSE`](LICENSE), [`NOTICE`](NOTICE), and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
