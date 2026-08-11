@@ -1,0 +1,28 @@
+[project]
+name = "production-orchestrator"
+version = "0.0.1"
+description = "A Strands-powered production scheduling agent for small embroidery shops"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "Production Orchestrator Team" }]
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=5",
+  "ruff>=0.6",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
