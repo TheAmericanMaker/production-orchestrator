@@ -11,6 +11,15 @@ This document is the durable execution contract for future agents and contributo
 
 If current official rules differ, stop, update the audit, and reconcile the implementation.
 
+## Repository visibility
+
+- Keep this repository private during development.
+- The official Agents for Humans rules require a public repository URL at submission, not an explicitly public repository throughout development.
+- Do not change visibility until the Arena pre-publication checklist passes and the publication decision is recorded in [publication gate issue #2](https://github.com/TheAmericanMaker/production-orchestrator/issues/2) and [`TheAmericanMaker/hackathon-arena#2`](https://github.com/TheAmericanMaker/hackathon-arena/issues/2).
+- The gate must review the complete reachable Git history for secrets, customer/proprietary material, prohibited prior work, and private strategy artifacts; then rerun tests, dependency/security scans, license detection, and clean setup.
+- After publication, verify anonymous access and keep it public for the rules-required judging period. Return it to private afterward when permitted.
+- Never publish the Hackathon Arena strategy repository.
+
 ## New-work boundary
 
 All submission work is fresh contest-period work. BobbinBoss/Aimbroidery is domain research only.

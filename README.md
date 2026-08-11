@@ -6,6 +6,8 @@
 
 **Hackathon:** Agents for Humans — Professional Agents track
 
+**Repository visibility:** **Private during development.** The official rules require a public repository at submission; publish only after the full-history pre-publication, security, license, and setup gates pass.
+
 **Issue:** [#1 — validate scheduling, approval, and audit loop](https://github.com/TheAmericanMaker/production-orchestrator/issues/1)
 
 **Executed result:** Both rejection and approval stopped on a real Strands interrupt. Rejection preserved revision 1; exact approval atomically advanced the schedule and procurement task to revision 2. See [`SPIKE_VERDICT.md`](SPIKE_VERDICT.md) and [`evidence/`](evidence/).
@@ -80,6 +82,8 @@ uv run production-orchestrator-spike \
 The committed [`evidence/rejection.json`](evidence/rejection.json) and [`evidence/approval.json`](evidence/approval.json) are the audited baseline runs. Runtime databases and session files are ignored.
 
 No AWS credentials, customer information, or runtime state belong in git.
+
+Because the repository will eventually become public, review the complete reachable Git history—not only the current tree—before changing visibility. Publication authorization and timing are tracked in [issue #2](https://github.com/TheAmericanMaker/production-orchestrator/issues/2) and the private Hackathon Arena strategy issue `TheAmericanMaker/hackathon-arena#2`.
 
 ## Contest-period and prior-work disclosure
 
