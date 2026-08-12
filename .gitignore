@@ -14,6 +14,7 @@ dist/
 .strands/
 sessions/
 data/runtime/
+data/demo-runtime/
 evidence/*-local.json
 *.db
 *.sqlite

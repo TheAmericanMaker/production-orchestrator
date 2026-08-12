@@ -13,6 +13,7 @@ dependencies = [
 [project.scripts]
 production-orchestrator-spike = "production_orchestrator.spike:main"
 production-orchestrator-restart-spike = "production_orchestrator.restart_spike:main"
+production-orchestrator-demo = "production_orchestrator.demo:main"
 
 [build-system]
 requires = ["hatchling"]

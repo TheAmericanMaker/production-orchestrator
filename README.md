@@ -16,6 +16,19 @@
 
 **Executed result:** Both rejection and approval stopped on a real Strands interrupt. Rejection preserved revision 1; exact approval atomically advanced the schedule and procurement task to revision 2. See [`SPIKE_VERDICT.md`](SPIKE_VERDICT.md) and [`evidence/`](evidence/).
 
+## Judge-facing local demo
+
+Run the focused before → interrupt → after interface:
+
+```bash
+uv sync --locked
+uv run production-orchestrator-demo
+```
+
+Open `http://127.0.0.1:8765`. The demo initializes a synthetic rush-order scenario, launches process A through the real Strands approval interrupt, and presents the exact immutable proposal. Approve or reject to launch process B, restore the persisted `FileSessionManager` interrupt, submit the official `interruptResponse`, and inspect the resulting revision, application count, process IDs, and audit chain.
+
+The local demo uses the deterministic Strands model by default, so it requires no paid model call. It binds only to localhost, stores transient SQLite/session state under the ignored `data/demo-runtime/` path, prepares communications as unsent drafts, and does not provide production authentication, multi-tenancy, deployment, or external integrations.
+
 ## Problem
 
 Small production shops coordinate due dates, customer approvals, material availability, machine compatibility, operator capacity, and customer communication. A rush order can force several connected decisions, and the cost of missing one is rework, a late delivery, or an avoidable customer escalation.
