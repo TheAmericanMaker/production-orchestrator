@@ -76,6 +76,73 @@ def test_fresh_process_resumes_real_strands_interrupt(
     assert result["workflow_passed"] is True
 
 
+@pytest.mark.parametrize(
+    ("decision", "expected_revision", "expected_applied"),
+    [("reject", 1, 0), ("approve", 2, 1)],
+)
+def test_full_workflow_provider_runs_seven_tools_and_resumes(
+    tmp_path: Path,
+    decision: str,
+    expected_revision: int,
+    expected_applied: int,
+) -> None:
+    runtime_dir = tmp_path / f"workflow-{decision}"
+    checkpoint_path = runtime_dir / "checkpoint.json"
+    _run_phase(
+        "start",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--provider",
+        "deterministic-workflow",
+        "--model",
+        "deterministic-workflow-model",
+        "--scenario",
+        "metallic-monogram",
+    )
+    checkpoint = json.loads(checkpoint_path.read_text())
+    report_path = runtime_dir / "report.json"
+
+    _run_phase(
+        "resume",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--decision",
+        decision,
+        "--report",
+        str(report_path),
+        "--provider",
+        "deterministic-workflow",
+        "--model",
+        "deterministic-workflow-model",
+    )
+
+    result = json.loads(report_path.read_text())
+    assert checkpoint["scenario"] == "metallic-monogram"
+    assert checkpoint["target_order_id"] == "GOLD-500"
+    assert checkpoint["provider"] == "deterministic-workflow"
+    assert result["scenario"] == "metallic-monogram"
+    assert result["workflow_passed"] is True
+    assert result["final_state_revision"] == expected_revision
+    assert result["plan_applied_count"] == expected_applied
+    expected_prefix = [
+        "scenario_initialized",
+        "active_orders_read",
+        "inventory_read",
+        "machine_capacity_read",
+        "blockers_analyzed",
+        "proposal_created",
+        "communications_drafted",
+    ]
+    expected_events = expected_prefix + (
+        ["approval_granted", "plan_applied"] if decision == "approve" else ["approval_rejected"]
+    )
+    assert result["audit_event_types"] == expected_events
+
+
 def test_wrong_interrupt_id_fails_closed_after_restart(tmp_path: Path) -> None:
     runtime_dir = tmp_path / "wrong-id"
     checkpoint = _start(runtime_dir)
@@ -193,6 +260,7 @@ def test_recomputed_agent_id_cannot_override_trusted_resume_provider(tmp_path: P
         proposal_hash=str(checkpoint["proposal_hash"]),
         aws_profile=str(checkpoint["aws_profile"]),
         aws_region=str(checkpoint["aws_region"]),
+        scenario=str(checkpoint["scenario"]),
     )
     checkpoint_path = runtime_dir / "checkpoint.json"
     checkpoint_path.write_text(json.dumps(checkpoint))

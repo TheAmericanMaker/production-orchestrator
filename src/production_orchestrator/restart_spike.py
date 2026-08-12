@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,7 @@ from strands import Agent
 from strands.models.model import Model
 from strands.session import FileSessionManager
 
-from production_orchestrator.fixtures import rush_order_scenario
+from production_orchestrator.fixtures import SCENARIOS
 from production_orchestrator.persistence import SQLiteShopRepository
 from production_orchestrator.spike import build_model, utc_now
 from production_orchestrator.workflow import (
@@ -22,6 +23,23 @@ from production_orchestrator.workflow import (
 SESSION_ID = "production-orchestrator-restart"
 AGENT_ID_PREFIX = "production-orchestrator"
 
+WORKFLOW_PROVIDER = "deterministic-workflow"
+WORKFLOW_MODEL_ID = "deterministic-workflow-model"
+
+WORKFLOW_SYSTEM_PROMPT = """You are executing the Production Orchestrator workflow.
+Use tools for every factual claim. Do not calculate or invent shop facts yourself.
+For the target order, call these tools exactly once and in this order:
+1. list_active_orders
+2. get_inventory
+3. get_machine_capacity
+4. analyze_shop_blockers
+5. propose_schedule
+6. draft_communications using the exact content_hash from propose_schedule
+7. apply_production_plan using that same exact content_hash
+Do not ask for approval in prose; the apply tool has a human interrupt.
+If the tool is rejected, do not retry it. Report the rejection and stop.
+"""
+
 
 def start_prompt(proposal_hash: str) -> str:
     return (
@@ -30,19 +48,25 @@ def start_prompt(proposal_hash: str) -> str:
     )
 
 
+def workflow_start_prompt(target_order_id: str) -> str:
+    return f"Execute the complete workflow for {target_order_id} now."
+
+
 def agent_id_for(
     *,
     provider: str,
     model_id: str,
-    proposal_hash: str,
+    proposal_hash: str | None,
     aws_profile: str | None,
     aws_region: str | None,
+    scenario: str | None = None,
 ) -> str:
     configuration = json.dumps(
         {
             "provider": provider,
             "model_id": model_id,
-            "proposal_hash": proposal_hash,
+            "proposal_hash": None if provider == WORKFLOW_PROVIDER else proposal_hash,
+            "scenario": scenario,
             "aws_profile": aws_profile if provider == "bedrock" else None,
             "aws_region": aws_region if provider == "bedrock" else None,
         },
@@ -110,18 +134,149 @@ class DeterministicApplyModel(Model):
         }
 
 
+class DeterministicWorkflowModel(Model):
+    """Drive the complete seven-tool Strands loop without network inference.
+
+    The scripted sequence mirrors the judged Bedrock workflow: every shop fact
+    still comes from a real tool call, the proposal hash is read from the
+    propose_schedule tool result, and the apply step stops at the real
+    Strands interrupt.
+    """
+
+    SEQUENCE = (
+        "list_active_orders",
+        "get_inventory",
+        "get_machine_capacity",
+        "analyze_shop_blockers",
+        "propose_schedule",
+        "draft_communications",
+        "apply_production_plan",
+    )
+    _HASH_PATTERNS = (
+        re.compile(r'\\?"content_hash\\?"\s*:\s*\\?"([0-9a-f]{64})\\?"'),
+        re.compile(r"'content_hash':\s*'([0-9a-f]{64})'"),
+    )
+
+    def __init__(self, target_order_id: str) -> None:
+        self.target_order_id = target_order_id
+        self.config: dict[str, Any] = {"model_id": WORKFLOW_MODEL_ID}
+
+    def update_config(self, **model_config: Any) -> None:
+        self.config.update(model_config)
+
+    def get_config(self) -> dict[str, Any]:
+        return dict(self.config)
+
+    async def structured_output(
+        self, *args: Any, **kwargs: Any
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        raise NotImplementedError
+        yield  # pragma: no cover
+
+    @classmethod
+    def _find_content_hash(cls, value: Any) -> str | None:
+        if isinstance(value, dict):
+            candidate = value.get("content_hash")
+            if isinstance(candidate, str) and len(candidate) == 64:
+                return candidate
+            for child in value.values():
+                found = cls._find_content_hash(child)
+                if found is not None:
+                    return found
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                found = cls._find_content_hash(child)
+                if found is not None:
+                    return found
+        elif isinstance(value, str):
+            for pattern in cls._HASH_PATTERNS:
+                match = pattern.search(value)
+                if match:
+                    return match.group(1)
+        return None
+
+    def _proposal_hash_from(self, messages: Any) -> str:
+        for message in messages:
+            for block in message.get("content", ()):
+                if "toolResult" not in block:
+                    continue
+                found = self._find_content_hash(block["toolResult"])
+                if found is not None:
+                    return found
+        raise RuntimeError("Proposal hash is not available from the propose_schedule result")
+
+    def _input_for(self, tool_name: str, messages: Any) -> dict[str, str]:
+        if tool_name in {"analyze_shop_blockers", "propose_schedule"}:
+            return {"target_order_id": self.target_order_id}
+        if tool_name in {"draft_communications", "apply_production_plan"}:
+            return {"proposal_hash": self._proposal_hash_from(messages)}
+        return {}
+
+    async def stream(self, messages, tool_specs=None, system_prompt=None, **kwargs):
+        seen = [
+            block["toolUse"]["name"]
+            for message in messages
+            for block in message["content"]
+            if "toolUse" in block
+        ]
+        next_tool = next((name for name in self.SEQUENCE if name not in seen), None)
+        yield {"messageStart": {"role": "assistant"}}
+        if next_tool is None:
+            yield {"contentBlockStart": {"start": {}}}
+            yield {
+                "contentBlockDelta": {
+                    "delta": {"text": "Workflow complete. The reviewed decision was recorded."}
+                }
+            }
+            yield {"contentBlockStop": {}}
+            yield {"messageStop": {"stopReason": "end_turn"}}
+        else:
+            yield {
+                "contentBlockStart": {
+                    "start": {
+                        "toolUse": {
+                            "name": next_tool,
+                            "toolUseId": f"workflow-{len(seen) + 1}-{next_tool}",
+                        }
+                    }
+                }
+            }
+            yield {
+                "contentBlockDelta": {
+                    "delta": {"toolUse": {"input": json.dumps(self._input_for(next_tool, messages))}}
+                }
+            }
+            yield {"contentBlockStop": {}}
+            yield {"messageStop": {"stopReason": "tool_use"}}
+        yield {
+            "metadata": {
+                "usage": {"inputTokens": 1, "outputTokens": 1, "totalTokens": 2},
+                "metrics": {"latencyMs": 0},
+            }
+        }
+
+
 def _configured_model(
     *,
     provider: str,
     model_id: str,
-    proposal_hash: str,
+    proposal_hash: str | None,
+    target_order_id: str | None,
     aws_profile: str | None,
     aws_region: str | None,
 ) -> Any:
     if provider == "deterministic":
         if model_id != "deterministic-apply-model":
             raise ValueError("Deterministic restart proof requires deterministic-apply-model")
+        if not proposal_hash:
+            raise ValueError("Deterministic restart proof requires a persisted proposal hash")
         return DeterministicApplyModel(proposal_hash)
+    if provider == WORKFLOW_PROVIDER:
+        if model_id != WORKFLOW_MODEL_ID:
+            raise ValueError("Deterministic workflow requires deterministic-workflow-model")
+        if not target_order_id:
+            raise ValueError("Deterministic workflow requires a target order")
+        return DeterministicWorkflowModel(target_order_id)
     if provider == "bedrock":
         return build_model(
             provider="bedrock",
@@ -136,19 +291,21 @@ def _configured_model(
 def _build_agent(
     runtime_dir: Path,
     service: ShopService,
-    proposal_hash: str,
+    proposal_hash: str | None,
     *,
     provider: str,
     model_id: str,
     aws_profile: str | None,
     aws_region: str | None,
     agent_id: str,
+    target_order_id: str | None = None,
 ) -> Agent:
     return Agent(
         model=_configured_model(
             provider=provider,
             model_id=model_id,
             proposal_hash=proposal_hash,
+            target_order_id=target_order_id,
             aws_profile=aws_profile,
             aws_region=aws_region,
         ),
@@ -159,7 +316,11 @@ def _build_agent(
             storage_dir=str(runtime_dir / "sessions"),
         ),
         agent_id=agent_id,
-        system_prompt="Apply only the supplied persisted production proposal.",
+        system_prompt=(
+            WORKFLOW_SYSTEM_PROMPT
+            if provider == WORKFLOW_PROVIDER
+            else "Apply only the supplied persisted production proposal."
+        ),
         callback_handler=None,
         name="Production Orchestrator",
         description="Fresh-process Strands interrupt proof",
@@ -174,40 +335,57 @@ def start(
     model_id: str,
     aws_profile: str | None,
     aws_region: str | None,
+    scenario: str = "rush-order",
 ) -> dict[str, object]:
+    spec = SCENARIOS[scenario]
+    target_order_id = spec.target_order_id
     runtime_dir.mkdir(parents=True, exist_ok=False)
     repository = SQLiteShopRepository(runtime_dir / "shop.db", clock=utc_now)
-    repository.initialize(rush_order_scenario())
+    repository.initialize(spec.build())
     service = ShopService(repository)
-    proposal = service.propose_schedule("RUSH-200")
-    proposal_hash = str(proposal["content_hash"])
     initial_digest = repository.domain_digest()
+
+    if provider == WORKFLOW_PROVIDER:
+        prompt = workflow_start_prompt(target_order_id)
+        expected_proposal_hash = None
+    else:
+        proposal = service.propose_schedule(target_order_id)
+        expected_proposal_hash = str(proposal["content_hash"])
+        prompt = start_prompt(expected_proposal_hash)
+
     agent_id = agent_id_for(
         provider=provider,
         model_id=model_id,
-        proposal_hash=proposal_hash,
+        proposal_hash=expected_proposal_hash,
         aws_profile=aws_profile,
         aws_region=aws_region,
+        scenario=scenario,
     )
     agent = _build_agent(
         runtime_dir,
         service,
-        proposal_hash,
+        expected_proposal_hash,
         provider=provider,
         model_id=model_id,
         aws_profile=aws_profile,
         aws_region=aws_region,
         agent_id=agent_id,
+        target_order_id=target_order_id,
     )
 
-    result = agent(start_prompt(proposal_hash))
+    result = agent(prompt)
     interrupts = list(result.interrupts or [])
     if result.stop_reason != "interrupt" or len(interrupts) != 1:
         raise RuntimeError("Expected exactly one real Strands interrupt")
     interrupt = interrupts[0]
     reason = interrupt.reason
-    if not isinstance(reason, dict) or reason.get("proposal_hash") != proposal_hash:
+    if not isinstance(reason, dict) or not isinstance(reason.get("proposal_hash"), str):
+        raise TypeError("Interrupt did not bind a persisted proposal hash")
+    proposal_hash = reason["proposal_hash"]
+    if expected_proposal_hash is not None and proposal_hash != expected_proposal_hash:
         raise RuntimeError("Interrupt did not bind the persisted proposal hash")
+    if repository.load_proposal(proposal_hash) is None:
+        raise RuntimeError("Interrupted proposal is not persisted")
     digest_at_interrupt = repository.domain_digest()
     if digest_at_interrupt != initial_digest:
         raise RuntimeError("Domain state changed before approval")
@@ -218,6 +396,8 @@ def start(
         "interrupt_id": interrupt.id,
         "interrupt_name": interrupt.name,
         "proposal_hash": proposal_hash,
+        "scenario": scenario,
+        "target_order_id": target_order_id,
         "session_id": SESSION_ID,
         "start_process_id": os.getpid(),
         "initial_domain_digest": initial_digest,
@@ -242,6 +422,8 @@ def _load_checkpoint(path: Path) -> dict[str, object]:
         "interrupt_id",
         "interrupt_name",
         "proposal_hash",
+        "scenario",
+        "target_order_id",
         "session_id",
         "start_process_id",
         "initial_domain_digest",
@@ -262,10 +444,14 @@ def _load_checkpoint(path: Path) -> dict[str, object]:
             raise ValueError(f"Checkpoint {key} is invalid")
     if not isinstance(data["start_process_id"], int):
         raise TypeError("Checkpoint process identity is invalid")
-    if data["provider"] not in {"deterministic", "bedrock"}:
+    if data["provider"] not in {"deterministic", "bedrock", WORKFLOW_PROVIDER}:
         raise ValueError("Checkpoint provider is invalid")
     if not isinstance(data["model_id"], str) or not data["model_id"]:
         raise ValueError("Checkpoint model identity is invalid")
+    if data["scenario"] not in SCENARIOS:
+        raise ValueError("Checkpoint scenario is invalid")
+    if data["target_order_id"] != SCENARIOS[str(data["scenario"])].target_order_id:
+        raise ValueError("Checkpoint target order does not match its scenario")
     if data["provider"] == "bedrock" and (
         not isinstance(data["aws_profile"], str)
         or not data["aws_profile"]
@@ -279,6 +465,7 @@ def _load_checkpoint(path: Path) -> dict[str, object]:
         proposal_hash=str(data["proposal_hash"]),
         aws_profile=data["aws_profile"] if isinstance(data["aws_profile"], str) else None,
         aws_region=data["aws_region"] if isinstance(data["aws_region"], str) else None,
+        scenario=str(data["scenario"]),
     )
     if data["agent_id"] != expected_agent_id:
         raise ValueError(
@@ -321,6 +508,7 @@ def resume(
         aws_profile=aws_profile,
         aws_region=aws_region,
         agent_id=agent_id,
+        target_order_id=str(checkpoint["target_order_id"]),
     )
 
     interrupt_id = str(checkpoint["interrupt_id"])
@@ -364,6 +552,7 @@ def resume(
     )
     report: dict[str, object] = {
         "decision": decision,
+        "scenario": checkpoint["scenario"],
         "final_state_revision": state.revision,
         "final_stop_reason": result.stop_reason,
         "interrupt_id": interrupt_id,
@@ -398,9 +587,12 @@ def main() -> None:
     start_parser.add_argument("--runtime-dir", type=Path, required=True)
     start_parser.add_argument("--checkpoint", type=Path, required=True)
     start_parser.add_argument(
-        "--provider", choices=("deterministic", "bedrock"), default="deterministic"
+        "--provider",
+        choices=("deterministic", "bedrock", WORKFLOW_PROVIDER),
+        default="deterministic",
     )
     start_parser.add_argument("--model", default="deterministic-apply-model")
+    start_parser.add_argument("--scenario", choices=sorted(SCENARIOS), default="rush-order")
     start_parser.add_argument("--aws-profile")
     start_parser.add_argument("--aws-region")
     resume_parser = subparsers.add_parser("resume")
@@ -409,7 +601,9 @@ def main() -> None:
     resume_parser.add_argument("--decision", choices=("reject", "approve"), required=True)
     resume_parser.add_argument("--report", type=Path, required=True)
     resume_parser.add_argument(
-        "--provider", choices=("deterministic", "bedrock"), default="deterministic"
+        "--provider",
+        choices=("deterministic", "bedrock", WORKFLOW_PROVIDER),
+        default="deterministic",
     )
     resume_parser.add_argument("--model", default="deterministic-apply-model")
     resume_parser.add_argument("--aws-profile")
@@ -423,6 +617,7 @@ def main() -> None:
             model_id=args.model,
             aws_profile=args.aws_profile,
             aws_region=args.aws_region,
+            scenario=args.scenario,
         )
     else:
         resume(

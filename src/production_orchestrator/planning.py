@@ -209,23 +209,33 @@ def _draft_communications(
         for change in changes
         if change.from_day is not None
     )
-    requested = ", ".join(
-        f"{action.quantity} units of {action.material_id}" for action in procurement_actions
+    customer_body = (
+        "Your rush order has a proposed production slot pending material procurement."
+        if procurement_actions
+        else "Your rush order has a proposed production slot on the requested day."
     )
-    return (
+    operator_body = f"Schedule {target_order_id}" + (f"; move {moved}." if moved else ".")
+    drafts = [
         CommunicationDraft(
             audience="customer",
             subject=f"Production update for {target_order_id}",
-            body="Your rush order has a proposed production slot pending material procurement.",
+            body=customer_body,
         ),
         CommunicationDraft(
             audience="operator",
             subject="Proposed production schedule change",
-            body=f"Schedule {target_order_id}; move {moved}.",
+            body=operator_body,
         ),
-        CommunicationDraft(
-            audience="supplier",
-            subject=f"Material request for {target_order_id}",
-            body=f"Please confirm availability for {requested}.",
-        ),
-    )
+    ]
+    if procurement_actions:
+        requested = ", ".join(
+            f"{action.quantity} units of {action.material_id}" for action in procurement_actions
+        )
+        drafts.append(
+            CommunicationDraft(
+                audience="supplier",
+                subject=f"Material request for {target_order_id}",
+                body=f"Please confirm availability for {requested}.",
+            )
+        )
+    return tuple(drafts)

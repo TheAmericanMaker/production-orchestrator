@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Production Orchestrator — Human-approved shop decisions</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>Production Orchestrator</div>
+    <span class="local">LOCAL · SYNTHETIC DATA</span>
+  </header>
+  <main>
+    <section class="hero" id="hero" aria-live="polite">
+      <div class="eyebrow" id="hero-eyebrow">Strands agent · human-approved writes</div>
+      <h1 id="hero-title">Watch the agent work a real shop decision</h1>
+      <p id="hero-copy">A Strands agent checks the shop through tools, plans one coordinated
+      response, and stops at a real interrupt. Nothing changes unless you approve the exact
+      reviewed plan.</p>
+    </section>
+    <nav class="scenario-row" id="scenarios" aria-label="Demo scenarios"></nav>
+    <div id="app" aria-live="polite">
+      <div class="empty"><span class="spinner"></span>The agent is checking the shop and preparing a recommendation…</div>
+    </div>
+  </main>
+</div>
+<noscript><p class="notice">This local demo requires JavaScript to render the agent run.</p></noscript>
+</body>
+</html>
