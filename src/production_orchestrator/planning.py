@@ -205,14 +205,12 @@ def _draft_communications(
     procurement_actions: tuple[ProcurementAction, ...],
 ) -> tuple[CommunicationDraft, ...]:
     moved = ", ".join(
-        f"{change.order_id} to {change.to_day}"
-        for change in changes
-        if change.from_day is not None
+        f"{change.order_id} to {change.to_day}" for change in changes if change.from_day is not None
     )
     customer_body = (
-        "Your rush order has a proposed production slot pending material procurement."
+        f"Order {target_order_id} has a proposed production slot pending material procurement."
         if procurement_actions
-        else "Your rush order has a proposed production slot on the requested day."
+        else f"Order {target_order_id} has a proposed production slot on the requested day."
     )
     operator_body = f"Schedule {target_order_id}" + (f"; move {moved}." if moved else ".")
     drafts = [

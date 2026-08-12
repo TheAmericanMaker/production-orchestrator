@@ -191,6 +191,62 @@ def test_altered_proposal_binding_fails_closed_after_restart(tmp_path: Path) -> 
     assert "proposal" in result.stderr.lower()
 
 
+@pytest.mark.parametrize("decision", ["approve", "reject"])
+def test_workflow_provider_rejects_forged_proposal_before_mutation(
+    tmp_path: Path, decision: str
+) -> None:
+    runtime_dir = tmp_path / "workflow-forged-proposal"
+    checkpoint_path = runtime_dir / "checkpoint.json"
+    _run_phase(
+        "start",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--provider",
+        "deterministic-workflow",
+        "--model",
+        "deterministic-workflow-model",
+        "--scenario",
+        "rush-order",
+    )
+    checkpoint = json.loads(checkpoint_path.read_text())
+    genuine_hash = str(checkpoint["proposal_hash"])
+    checkpoint["proposal_hash"] = "0" * 64
+    checkpoint_path.write_text(json.dumps(checkpoint))
+
+    result = _run_phase(
+        "resume",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--decision",
+        decision,
+        "--report",
+        str(runtime_dir / "report.json"),
+        "--provider",
+        "deterministic-workflow",
+        "--model",
+        "deterministic-workflow-model",
+        check=False,
+    )
+
+    repository = SQLiteShopRepository(runtime_dir / "shop.db", clock=lambda: "2026-08-12T00:00:00Z")
+    assert result.returncode != 0
+    assert repository.load_state().revision == 1
+    assert [event.event_type for event in repository.audit_events()] == [
+        "scenario_initialized",
+        "active_orders_read",
+        "inventory_read",
+        "machine_capacity_read",
+        "blockers_analyzed",
+        "proposal_created",
+        "communications_drafted",
+    ]
+    assert repository.load_proposal(genuine_hash) is not None
+
+
 def test_wrong_session_identity_fails_closed_after_restart(tmp_path: Path) -> None:
     runtime_dir = tmp_path / "wrong-session"
     checkpoint = _start(runtime_dir)

@@ -243,7 +243,9 @@ class DeterministicWorkflowModel(Model):
             }
             yield {
                 "contentBlockDelta": {
-                    "delta": {"toolUse": {"input": json.dumps(self._input_for(next_tool, messages))}}
+                    "delta": {
+                        "toolUse": {"input": json.dumps(self._input_for(next_tool, messages))}
+                    }
                 }
             }
             yield {"contentBlockStop": {}}
@@ -497,6 +499,20 @@ def resume(
         raise ValueError("Checkpoint does not match trusted provider configuration")
     repository = SQLiteShopRepository(runtime_dir / "shop.db", clock=utc_now)
     proposal_hash = str(checkpoint["proposal_hash"])
+    proposal = repository.load_proposal(proposal_hash)
+    proposal_events = [
+        event for event in repository.audit_events() if event.event_type == "proposal_created"
+    ]
+    if (
+        proposal is None
+        or proposal.target_order_id != checkpoint["target_order_id"]
+        or len(proposal_events) != 1
+        or proposal_events[0].proposal_hash != proposal_hash
+        or proposal_events[0].details.get("proposal_id") != proposal.proposal_id
+        or proposal_events[0].details.get("base_revision") != proposal.base_revision
+        or proposal_events[0].details.get("target_order_id") != proposal.target_order_id
+    ):
+        raise ValueError("Checkpoint proposal does not match canonical persisted evidence")
     service = ShopService(repository)
     agent_id = str(checkpoint["agent_id"])
     agent = _build_agent(

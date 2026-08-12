@@ -73,9 +73,7 @@ def test_scenario_catalog_builds_plannable_states() -> None:
         assert spec.title and spec.question and spec.summary
         plan = create_production_plan(state, target_order_id=spec.target_order_id)
         assert plan.evidence
-        assert any(
-            change.order_id == spec.target_order_id for change in plan.schedule_changes
-        )
+        assert any(change.order_id == spec.target_order_id for change in plan.schedule_changes)
 
 
 def test_capacity_shortage_displaces_multiple_lower_priority_orders() -> None:
@@ -111,9 +109,7 @@ def test_metallic_scenario_yields_single_move_and_exact_procurement() -> None:
 
 
 def test_supplier_draft_exists_only_when_procurement_is_needed() -> None:
-    with_procurement = create_production_plan(
-        rush_order_scenario(), target_order_id="RUSH-200"
-    )
+    with_procurement = create_production_plan(rush_order_scenario(), target_order_id="RUSH-200")
     without_procurement = create_production_plan(
         team_jerseys_scenario(), target_order_id="JERSEY-310"
     )
@@ -130,9 +126,7 @@ def test_supplier_draft_exists_only_when_procurement_is_needed() -> None:
 
 
 def test_customer_draft_mentions_procurement_only_when_present() -> None:
-    with_procurement = create_production_plan(
-        rush_order_scenario(), target_order_id="RUSH-200"
-    )
+    with_procurement = create_production_plan(rush_order_scenario(), target_order_id="RUSH-200")
     without_procurement = create_production_plan(
         team_jerseys_scenario(), target_order_id="JERSEY-310"
     )
@@ -141,9 +135,11 @@ def test_customer_draft_mentions_procurement_only_when_present() -> None:
         draft for draft in with_procurement.communication_drafts if draft.audience == "customer"
     )
     customer_without = next(
-        draft
-        for draft in without_procurement.communication_drafts
-        if draft.audience == "customer"
+        draft for draft in without_procurement.communication_drafts if draft.audience == "customer"
     )
+    assert "RUSH-200" in customer_with.body
+    assert "JERSEY-310" in customer_without.body
+    assert "rush order" not in customer_with.body.lower()
+    assert "rush order" not in customer_without.body.lower()
     assert "procurement" in customer_with.body
     assert "procurement" not in customer_without.body
