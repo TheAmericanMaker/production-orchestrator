@@ -12,6 +12,7 @@ dependencies = [
 
 [project.scripts]
 production-orchestrator-spike = "production_orchestrator.spike:main"
+production-orchestrator-restart-spike = "production_orchestrator.restart_spike:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -31,6 +32,9 @@ package = true
 addopts = "-q"
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+patch = ["subprocess"]
 
 [tool.ruff]
 line-length = 100

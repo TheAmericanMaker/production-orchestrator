@@ -12,6 +12,8 @@
 
 **Restart hardening:** [#3 — persist proposals for cross-process approval resume](https://github.com/TheAmericanMaker/production-orchestrator/issues/3)
 
+**Fresh-process Strands resume:** [#4 — restore a persisted approval interrupt in a new process](https://github.com/TheAmericanMaker/production-orchestrator/issues/4)
+
 **Executed result:** Both rejection and approval stopped on a real Strands interrupt. Rejection preserved revision 1; exact approval atomically advanced the schedule and procurement task to revision 2. See [`SPIKE_VERDICT.md`](SPIKE_VERDICT.md) and [`evidence/`](evidence/).
 
 ## Problem
@@ -41,7 +43,7 @@ The deterministic core and real Strands interrupt loop are operational. All seve
 
 The judged-provider feasibility gate is validated with `amazon.nova-lite-v1:0` in `us-east-1`. Rejection preserved revision 1 with no `plan_applied` event; exact approval advanced atomically to revision 2, and the sole applied hash matched the proposal reviewed at the interrupt. The original Ollama reports remain as fallback-development evidence, not judged-provider proof.
 
-Immutable proposals are now persisted in SQLite by canonical content hash. A fresh `ShopService`, including one launched in a separate Python interpreter, can reconstruct the exact proposal, verify its identity, and apply it only when the stored approval and base revision still match. Tampered, conflicting, forged, stale, and replayed proposals fail closed. A complete fresh-process Strands session resume using persisted `FileSessionManager` artifacts and `interruptResponse` is still a separate integration proof required before claiming end-to-end restart-safe agent operation.
+Immutable proposals are persisted in SQLite by canonical content hash. Fresh-process Bedrock rejection and exact-approval runs now also prove that a new Python interpreter can reconstruct the same Strands agent and `FileSessionManager` session, restore the pending interrupt, and submit the official `interruptResponse`. Rejection preserved revision 1; approval applied the exact persisted proposal once and advanced to revision 2. Wrong interrupt IDs, altered session/proposal/provider bindings, stale state, and replay fail closed.
 
 ## Spike questions
 
@@ -108,6 +110,30 @@ uv run production-orchestrator-spike \
 ```
 
 The audited judged-provider reports are [`evidence/bedrock-rejection.json`](evidence/bedrock-rejection.json) and [`evidence/bedrock-approval.json`](evidence/bedrock-approval.json). Their hashes and paired gate result are recorded in [`evidence/bedrock-verdict.json`](evidence/bedrock-verdict.json).
+
+The narrower restart proof is executed in two phases. Use a new runtime directory for each decision and pass the same explicit provider configuration to both commands:
+
+```bash
+uv run production-orchestrator-restart-spike start \
+  --runtime-dir data/runtime/restart-reject-local \
+  --checkpoint data/runtime/restart-reject-local/checkpoint.json \
+  --provider bedrock \
+  --model amazon.nova-lite-v1:0 \
+  --aws-profile production-orchestrator-bedrock \
+  --aws-region us-east-1
+
+uv run production-orchestrator-restart-spike resume \
+  --runtime-dir data/runtime/restart-reject-local \
+  --checkpoint data/runtime/restart-reject-local/checkpoint.json \
+  --decision reject \
+  --report evidence/bedrock-restart-rejection-local.json \
+  --provider bedrock \
+  --model amazon.nova-lite-v1:0 \
+  --aws-profile production-orchestrator-bedrock \
+  --aws-region us-east-1
+```
+
+The independently executed restart reports are [`evidence/bedrock-restart-rejection.json`](evidence/bedrock-restart-rejection.json) and [`evidence/bedrock-restart-approval.json`](evidence/bedrock-restart-approval.json). They prove session reconstruction and approval safety across real process boundaries; the earlier paired reports remain the evidence for the complete seven-tool workflow.
 
 No AWS credentials, customer information, or runtime state belong in git.
 

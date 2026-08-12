@@ -47,8 +47,9 @@ The earlier `rejection.json` and `approval.json` files remain explicitly labeled
 7. **Approval safety:** a `y` response bound to the exact hash, applied the schedule/procurement update, and appended `plan_applied` in one SQLite transaction.
 8. **Persistent session state:** `FileSessionManager` wrote session, agent, and message artifacts for both executions.
 9. **Durable audit:** evidence links factual reads, blockers, proposal, drafts, approval, and mutation.
-10. **Repeatable core:** 31 automated tests cover deterministic planning, default denial, hash integrity, stale replay, rollback, hook behavior, audit completeness, explicit provider construction, fail-closed paired-evidence evaluation, immutable proposal persistence, and cross-interpreter reconstruction.
+10. **Repeatable core:** 41 automated tests cover deterministic planning, default denial, hash integrity, stale replay, rollback, hook behavior, audit completeness, explicit provider construction, fail-closed paired-evidence evaluation, immutable proposal persistence, and fresh-process Strands reconstruction.
 11. **Durable proposal reconstruction:** complete canonical proposals are stored by content hash in SQLite. Fresh service instances and a separate Python interpreter reconstructed and applied the exact approved proposal; tampering, conflicting payloads, forged identities, stale revisions, and replay failed closed.
+12. **Fresh-process Strands resume:** independent Bedrock rejection and approval paths reconstructed the same persisted `FileSessionManager` session in process B and submitted the official `interruptResponse`. Rejection preserved revision 1; approval applied one exact plan and advanced to revision 2.
 
 ## Important metric interpretation
 
@@ -74,20 +75,20 @@ Significant RED checkpoints observed before implementation:
 Final local gate:
 
 ```text
-31 passed
-79.46% whole-package coverage (70% floor)
+41 passed
+84.28% whole-package coverage (70% floor)
 ruff: All checks passed
 ```
 
-The current whole-package report is 79.46%. The live provider CLI is exercised through committed integration evidence rather than mocked network calls.
+Coverage.py's subprocess patch measures the restart code executed in fresh interpreters. The live provider CLI is exercised through committed integration evidence rather than mocked network calls.
 
 ## Remaining hardening outside the completed feasibility gate
 
-### Remaining Strands cross-process resume proof
+### Completed Strands cross-process resume proof
 
 Complete immutable proposals are now persisted by canonical content hash. A fresh `ShopService` and a separate Python interpreter can reconstruct the exact proposal from SQLite, validate its identity, enforce the stored approval and base revision, and apply it atomically. Tampered, conflicting, forged, stale, and replayed proposals fail closed.
 
-The live Bedrock proof itself still resumes the interrupted Strands agent within the same process. `FileSessionManager` persisted the Strands session artifacts, but reconstructing a fresh Strands agent from those artifacts and submitting `interruptResponse` in a new process has not yet been executed. Complete that integration proof before a server or UI claims end-to-end restart-safe agent approval.
+Independent live Bedrock rejection and approval paths started in process A, stopped at a real `BeforeToolCallEvent` interrupt, and exited. Process B reconstructed the same stable agent and `FileSessionManager` session from disk and submitted the official `interruptResponse`. The rejection audit contains no `plan_applied` event and stayed at revision 1. Approval contains exactly one `plan_applied` event for the reviewed hash and advanced to revision 2. See [`evidence/bedrock-restart-rejection.json`](evidence/bedrock-restart-rejection.json) and [`evidence/bedrock-restart-approval.json`](evidence/bedrock-restart-approval.json).
 
 ### Bedrock gate result
 
@@ -104,4 +105,4 @@ No credential values, session tokens, or credential-file contents appear in evid
 
 ## Recommendation for the real build
 
-The architecture is viable. Retain the deterministic planning and SQLite transaction boundary unchanged. Treat the model as an orchestrator and explainer, not the source of inventory or scheduling truth. Build only the smallest before/interrupt/after interface needed to make this evidence legible to judges, and complete fresh-process Strands session reconstruction before deploying a server or UI that promises end-to-end restart-safe approval.
+The architecture is viable. Retain the deterministic planning and SQLite transaction boundary unchanged. Treat the model as an orchestrator and explainer, not the source of inventory or scheduling truth. Build only the smallest before/interrupt/after interface needed to make the validated restart-safe approval evidence legible to judges.

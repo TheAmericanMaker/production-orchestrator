@@ -1,0 +1,23 @@
+{
+  "audit_event_types": [
+    "scenario_initialized",
+    "proposal_created",
+    "approval_rejected"
+  ],
+  "aws_region": "us-east-1",
+  "decision": "reject",
+  "final_domain_digest": "e953ff6f564bbf3d124b36986c90aa286be7d5adedff9cb05a77df98a4118fac",
+  "final_state_revision": 1,
+  "final_stop_reason": "end_turn",
+  "interrupt_id": "v1:before_tool_call:tooluse_Zo6DrMFulSccQupyx7arTf:0e47f884-de38-5d20-88d9-b87e87ad695f",
+  "model_id": "amazon.nova-lite-v1:0",
+  "official_interrupt_response_used": true,
+  "plan_applied_count": 0,
+  "process_boundary_proven": true,
+  "proposal_hash": "46d63343be0bbf98d2efa7d82bd6269cbf7b8c09401f52b7c73a76ec326685b5",
+  "provider": "bedrock",
+  "resume_process_id": 409644,
+  "session_interrupt_restored": true,
+  "start_process_id": 409635,
+  "workflow_passed": true
+}
