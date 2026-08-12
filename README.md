@@ -25,7 +25,9 @@ uv sync --locked
 uv run production-orchestrator-demo
 ```
 
-Open `http://127.0.0.1:8765`. The demo initializes a synthetic rush-order scenario, launches process A through the real Strands approval interrupt, and presents the exact immutable proposal. Approve or reject to launch process B, restore the persisted `FileSessionManager` interrupt, submit the official `interruptResponse`, and inspect the resulting revision, application count, process IDs, and audit chain.
+Open `http://127.0.0.1:8765`. The demo explains a synthetic shop decision in operational terms: a priority rush order would put today's embroidery machine two hours over capacity and is 600 units short of red thread. The agent recommends moving lower-priority work to tomorrow, scheduling the rush order today, recording the material follow-up, and preparing three unsent communications as one coordinated plan. Choose **Keep current schedule** or **Approve coordinated plan** to see the exact business consequence.
+
+The interface leads with the shop problem, recommendation, usefulness, and decision consequences. Expand **Technical proof** to inspect the immutable proposal hash, distinct start/resume process IDs, official restored interrupt response, application count, and audit chain.
 
 The local demo uses the deterministic Strands model by default, so it requires no paid model call. It binds only to localhost, stores transient SQLite/session state under the ignored `data/demo-runtime/` path, prepares communications as unsent drafts, and does not provide production authentication, multi-tenancy, deployment, or external integrations.
 

@@ -181,8 +181,8 @@ def test_http_api_is_local_demo_boundary_and_fails_closed(tmp_path: Path) -> Non
         assert isinstance(page, str)
         assert 'id="app"' in page
         assert 'aria-live="polite"' in page
-        assert "Approve exact plan" in page
-        assert "Reject plan" in page
+        assert "Approve coordinated plan" in page
+        assert "Keep current schedule" in page
 
         status, cross_site = _request(
             base_url + "/api/scenarios",
@@ -288,5 +288,18 @@ def test_rendered_app_has_accessible_structure_and_no_external_runtime_assets() 
     assert "Final deterministic state" in page
     assert "The decision outcome is uncertain" in page
     assert "Further decisions are locked" in page
+    assert "Can we fit the rush order into today’s schedule?" in page
+    assert "2 hours over today’s machine capacity" in page
+    assert "600 units of red thread short" in page
+    assert "What the agent recommends" in page
+    assert "Why this is useful" in page
+    assert "Keep current schedule" in page
+    assert "Approve coordinated plan" in page
+    assert "Technical proof" in page
+    assert "<details" in page
+    assert "Rush order scheduled; follow-up work created" in page
+    assert "Current shop plan kept unchanged" in page
+    assert "Nothing changes unless that exact plan is approved" in page
+    assert "Today scheduled" in page
     assert "https://" not in page
     assert "http://" not in page
