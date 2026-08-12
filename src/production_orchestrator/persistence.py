@@ -6,13 +6,18 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from production_orchestrator.models import (
+    Blocker,
+    CommunicationDraft,
     Machine,
     Order,
+    ProcurementAction,
     ProcurementTask,
     ProductionPlan,
+    ScheduleChange,
     ScheduleEntry,
     ShopState,
 )
+from production_orchestrator.planning import calculate_production_plan_hash
 
 
 @dataclass(frozen=True)
@@ -72,6 +77,11 @@ class SQLiteShopRepository:
                     event_type TEXT NOT NULL,
                     proposal_hash TEXT,
                     details TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS production_proposals (
+                    content_hash TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
                 """
@@ -179,6 +189,50 @@ class SQLiteShopRepository:
             created_at=row["created_at"],
         )
 
+    def save_proposal(self, proposal: ProductionPlan) -> None:
+        calculated_hash = calculate_production_plan_hash(proposal)
+        expected_id = f"plan-{calculated_hash[:12]}"
+        if proposal.content_hash != calculated_hash or proposal.proposal_id != expected_id:
+            raise ValueError("Proposal integrity validation failed before persistence")
+        payload = _encode_proposal(proposal)
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO production_proposals(content_hash, payload, created_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(content_hash) DO NOTHING
+                """,
+                (proposal.content_hash, payload, self.clock()),
+            )
+            row = connection.execute(
+                "SELECT payload FROM production_proposals WHERE content_hash = ?",
+                (proposal.content_hash,),
+            ).fetchone()
+        if row is None or row["payload"] != payload:
+            raise ValueError("Persisted proposal integrity conflict")
+
+    def load_proposal(self, proposal_hash: str) -> ProductionPlan | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT payload FROM production_proposals WHERE content_hash = ?",
+                (proposal_hash,),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            proposal = _decode_proposal(row["payload"])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            raise ValueError("Persisted proposal integrity validation failed") from error
+        calculated_hash = calculate_production_plan_hash(proposal)
+        expected_id = f"plan-{calculated_hash[:12]}"
+        if (
+            proposal.content_hash != proposal_hash
+            or calculated_hash != proposal_hash
+            or proposal.proposal_id != expected_id
+        ):
+            raise ValueError("Persisted proposal integrity validation failed")
+        return proposal
+
     def apply_approved_plan(self, proposal: ProductionPlan) -> int:
         with self._connect() as connection:
             row = connection.execute(
@@ -240,9 +294,7 @@ class SQLiteShopRepository:
                 details={
                     "base_revision": proposal.base_revision,
                     "applied_revision": applied_state.revision,
-                    "schedule_changes": [
-                        asdict(change) for change in proposal.schedule_changes
-                    ],
+                    "schedule_changes": [asdict(change) for change in proposal.schedule_changes],
                     "procurement_actions": [
                         asdict(action) for action in proposal.procurement_actions
                     ],
@@ -297,9 +349,7 @@ def _encode_state(state: ShopState) -> str:
         "revision": state.revision,
         "inventory": dict(state.inventory),
         "orders": {order_id: asdict(order) for order_id, order in state.orders.items()},
-        "machines": {
-            machine_id: asdict(machine) for machine_id, machine in state.machines.items()
-        },
+        "machines": {machine_id: asdict(machine) for machine_id, machine in state.machines.items()},
         "schedule": [asdict(entry) for entry in state.schedule],
         "procurement_tasks": [asdict(task) for task in state.procurement_tasks],
     }
@@ -318,5 +368,35 @@ def _decode_state(payload: str) -> ShopState:
         schedule=tuple(ScheduleEntry(**entry) for entry in data["schedule"]),
         procurement_tasks=tuple(
             ProcurementTask(**task) for task in data.get("procurement_tasks", [])
+        ),
+    )
+
+
+def _encode_proposal(proposal: ProductionPlan) -> str:
+    return json.dumps(asdict(proposal), sort_keys=True, separators=(",", ":"))
+
+
+def _decode_proposal(payload: str) -> ProductionPlan:
+    data = json.loads(payload)
+    return ProductionPlan(
+        proposal_id=data["proposal_id"],
+        content_hash=data["content_hash"],
+        base_revision=data["base_revision"],
+        target_order_id=data["target_order_id"],
+        evidence=tuple(
+            Blocker(
+                **{
+                    **item,
+                    "related_order_ids": tuple(item.get("related_order_ids", ())),
+                }
+            )
+            for item in data["evidence"]
+        ),
+        schedule_changes=tuple(ScheduleChange(**item) for item in data["schedule_changes"]),
+        procurement_actions=tuple(
+            ProcurementAction(**item) for item in data["procurement_actions"]
+        ),
+        communication_drafts=tuple(
+            CommunicationDraft(**item) for item in data["communication_drafts"]
         ),
     )

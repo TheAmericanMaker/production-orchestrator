@@ -26,10 +26,7 @@ class ShopService:
         )
         return {
             "state_revision": state.revision,
-            "orders": [
-                asdict(state.orders[order_id])
-                for order_id in sorted(state.orders)
-            ],
+            "orders": [asdict(state.orders[order_id]) for order_id in sorted(state.orders)],
         }
 
     def get_inventory(self) -> dict[str, object]:
@@ -61,8 +58,7 @@ class ShopService:
         return {
             "state_revision": state.revision,
             "machines": [
-                asdict(state.machines[machine_id])
-                for machine_id in sorted(state.machines)
+                asdict(state.machines[machine_id]) for machine_id in sorted(state.machines)
             ],
             "schedule": [
                 asdict(entry)
@@ -93,6 +89,7 @@ class ShopService:
 
     def propose_schedule(self, target_order_id: str) -> dict[str, object]:
         proposal = create_production_plan(self.repository.load_state(), target_order_id)
+        self.repository.save_proposal(proposal)
         self._proposals[proposal.content_hash] = proposal
         self.repository.record_audit(
             event_type="proposal_created",
@@ -123,8 +120,12 @@ class ShopService:
     def get_proposal(self, proposal_hash: str) -> ProductionPlan:
         try:
             return self._proposals[proposal_hash]
-        except KeyError as error:
-            raise ValueError(f"Unknown proposal hash: {proposal_hash}") from error
+        except KeyError:
+            proposal = self.repository.load_proposal(proposal_hash)
+            if proposal is None:
+                raise ValueError(f"Unknown proposal hash: {proposal_hash}")
+            self._proposals[proposal_hash] = proposal
+            return proposal
 
     def proposal_summary(self, proposal_hash: str) -> dict[str, object]:
         proposal = self.get_proposal(proposal_hash)
@@ -134,9 +135,7 @@ class ShopService:
             "base_revision": proposal.base_revision,
             "target_order_id": proposal.target_order_id,
             "schedule_changes": [asdict(change) for change in proposal.schedule_changes],
-            "procurement_actions": [
-                asdict(action) for action in proposal.procurement_actions
-            ],
+            "procurement_actions": [asdict(action) for action in proposal.procurement_actions],
         }
 
     def apply_plan(self, proposal_hash: str) -> dict[str, object]:

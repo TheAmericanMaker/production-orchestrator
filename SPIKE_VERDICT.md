@@ -47,7 +47,8 @@ The earlier `rejection.json` and `approval.json` files remain explicitly labeled
 7. **Approval safety:** a `y` response bound to the exact hash, applied the schedule/procurement update, and appended `plan_applied` in one SQLite transaction.
 8. **Persistent session state:** `FileSessionManager` wrote session, agent, and message artifacts for both executions.
 9. **Durable audit:** evidence links factual reads, blockers, proposal, drafts, approval, and mutation.
-10. **Repeatable core:** 24 automated tests cover deterministic planning, default denial, hash integrity, stale replay, rollback, hook behavior, audit completeness, explicit provider construction, and fail-closed paired-evidence evaluation.
+10. **Repeatable core:** 31 automated tests cover deterministic planning, default denial, hash integrity, stale replay, rollback, hook behavior, audit completeness, explicit provider construction, fail-closed paired-evidence evaluation, immutable proposal persistence, and cross-interpreter reconstruction.
+11. **Durable proposal reconstruction:** complete canonical proposals are stored by content hash in SQLite. Fresh service instances and a separate Python interpreter reconstructed and applied the exact approved proposal; tampering, conflicting payloads, forged identities, stale revisions, and replay failed closed.
 
 ## Important metric interpretation
 
@@ -73,18 +74,20 @@ Significant RED checkpoints observed before implementation:
 Final local gate:
 
 ```text
-24 passed
-77.53% whole-package coverage (70% floor)
+31 passed
+79.46% whole-package coverage (70% floor)
 ruff: All checks passed
 ```
 
-The current whole-package report is 77.53%. The live provider CLI is exercised through committed integration evidence rather than mocked network calls.
+The current whole-package report is 79.46%. The live provider CLI is exercised through committed integration evidence rather than mocked network calls.
 
 ## Remaining hardening outside the completed feasibility gate
 
-### Cross-process resume hardening
+### Remaining Strands cross-process resume proof
 
-The executed proof resumes the interrupted agent within the same process. `FileSessionManager` persisted the Strands session artifacts, but `ShopService` intentionally keeps the narrow spike's proposal registry in memory. Before a server or UI is built, persist complete immutable proposals by content hash and add a test that reconstructs the agent and shop service in a fresh process before sending `interruptResponse`. This is a production-hardening requirement, not evidence of a safety failure in the executed same-process spike.
+Complete immutable proposals are now persisted by canonical content hash. A fresh `ShopService` and a separate Python interpreter can reconstruct the exact proposal from SQLite, validate its identity, enforce the stored approval and base revision, and apply it atomically. Tampered, conflicting, forged, stale, and replayed proposals fail closed.
+
+The live Bedrock proof itself still resumes the interrupted Strands agent within the same process. `FileSessionManager` persisted the Strands session artifacts, but reconstructing a fresh Strands agent from those artifacts and submitting `interruptResponse` in a new process has not yet been executed. Complete that integration proof before a server or UI claims end-to-end restart-safe agent approval.
 
 ### Bedrock gate result
 
@@ -101,4 +104,4 @@ No credential values, session tokens, or credential-file contents appear in evid
 
 ## Recommendation for the real build
 
-The architecture is viable. Retain the deterministic planning and SQLite transaction boundary unchanged. Treat the model as an orchestrator and explainer, not the source of inventory or scheduling truth. Build only the smallest before/interrupt/after interface needed to make this evidence legible to judges, and complete cross-process proposal reconstruction before deploying a server or UI that promises restart-safe approval.
+The architecture is viable. Retain the deterministic planning and SQLite transaction boundary unchanged. Treat the model as an orchestrator and explainer, not the source of inventory or scheduling truth. Build only the smallest before/interrupt/after interface needed to make this evidence legible to judges, and complete fresh-process Strands session reconstruction before deploying a server or UI that promises end-to-end restart-safe approval.

@@ -8,7 +8,9 @@
 
 **Repository visibility:** **Private during development.** The official rules require a public repository at submission; publish only after the full-history pre-publication, security, license, and setup gates pass.
 
-**Issue:** [#1 — validate scheduling, approval, and audit loop](https://github.com/TheAmericanMaker/production-orchestrator/issues/1)
+**Completed feasibility issue:** [#1 — validate scheduling, approval, and audit loop](https://github.com/TheAmericanMaker/production-orchestrator/issues/1)
+
+**Restart hardening:** [#3 — persist proposals for cross-process approval resume](https://github.com/TheAmericanMaker/production-orchestrator/issues/3)
 
 **Executed result:** Both rejection and approval stopped on a real Strands interrupt. Rejection preserved revision 1; exact approval atomically advanced the schedule and procurement task to revision 2. See [`SPIKE_VERDICT.md`](SPIKE_VERDICT.md) and [`evidence/`](evidence/).
 
@@ -38,6 +40,8 @@ See [`DEVELOPMENT_CONTRACT.md`](DEVELOPMENT_CONTRACT.md) for the non-negotiable 
 The deterministic core and real Strands interrupt loop are operational. All seven Strands tools were observed in independent rejection and approval runs, `FileSessionManager` persisted each session, and all eight machine-evaluated workflow checks passed through Amazon Bedrock.
 
 The judged-provider feasibility gate is validated with `amazon.nova-lite-v1:0` in `us-east-1`. Rejection preserved revision 1 with no `plan_applied` event; exact approval advanced atomically to revision 2, and the sole applied hash matched the proposal reviewed at the interrupt. The original Ollama reports remain as fallback-development evidence, not judged-provider proof.
+
+Immutable proposals are now persisted in SQLite by canonical content hash. A fresh `ShopService`, including one launched in a separate Python interpreter, can reconstruct the exact proposal, verify its identity, and apply it only when the stored approval and base revision still match. Tampered, conflicting, forged, stale, and replayed proposals fail closed. A complete fresh-process Strands session resume using persisted `FileSessionManager` artifacts and `interruptResponse` is still a separate integration proof required before claiming end-to-end restart-safe agent operation.
 
 ## Spike questions
 
