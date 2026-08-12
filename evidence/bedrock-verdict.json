@@ -1,0 +1,32 @@
+{
+  "aws_region": "us-east-1",
+  "gate": "Paired Amazon Bedrock rejection and exact-approval workflow",
+  "generated_at": "2026-08-12T12:09:55.998970Z",
+  "model_id": "amazon.nova-lite-v1:0",
+  "provider": "amazon-bedrock",
+  "reports": [
+    {
+      "decision": "reject",
+      "final_state_revision": 1,
+      "input_tokens": 14633,
+      "output_tokens": 684,
+      "path": "evidence/bedrock-rejection.json",
+      "provider_path_passed": true,
+      "sha256": "d5c5a9ddcb45a03266000915257d3a3bb3dcd4c2bc31c6294a8e490496e86c2c",
+      "workflow_passed": true
+    },
+    {
+      "decision": "approve",
+      "final_state_revision": 2,
+      "input_tokens": 15285,
+      "output_tokens": 1016,
+      "path": "evidence/bedrock-approval.json",
+      "provider_path_passed": true,
+      "sha256": "df664108e8843ea551f3a8f67f781603742fbec219438aac62f0186181b04f37",
+      "workflow_passed": true
+    }
+  ],
+  "submission_gate_blocker": null,
+  "submission_gate_passed": true,
+  "verdict": "VALIDATED"
+}

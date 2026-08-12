@@ -2,7 +2,7 @@
 
 > A Strands-powered production scheduling agent for small embroidery and decorated-apparel shops.
 
-**Status:** **PARTIAL** — full Strands safety workflow passed on Ollama fallback; Bedrock execution blocked by missing AWS credentials
+**Status:** **VALIDATED FEASIBILITY SPIKE** — paired Amazon Bedrock rejection and exact-approval workflows passed
 
 **Hackathon:** Agents for Humans — Professional Agents track
 
@@ -35,9 +35,9 @@ See [`DEVELOPMENT_CONTRACT.md`](DEVELOPMENT_CONTRACT.md) for the non-negotiable 
 
 ## Current verdict
 
-The deterministic core and real Strands interrupt loop are operational. Twelve automated tests pass, all seven Strands tools were observed in both live runs, `FileSessionManager` persisted each session, and eight machine-evaluated workflow checks passed for rejection and approval.
+The deterministic core and real Strands interrupt loop are operational. All seven Strands tools were observed in independent rejection and approval runs, `FileSessionManager` persisted each session, and all eight machine-evaluated workflow checks passed through Amazon Bedrock.
 
-The overall spike is not yet fully validated because this environment has no AWS credential chain or region. The committed evidence uses `glm-5.2:cloud` through the documented Ollama fallback and explicitly marks `submission_gate_passed: false`. Full UI/application scaffolding remains gated until a Bedrock run reproduces the result.
+The judged-provider feasibility gate is validated with `amazon.nova-lite-v1:0` in `us-east-1`. Rejection preserved revision 1 with no `plan_applied` event; exact approval advanced atomically to revision 2, and the sole applied hash matched the proposal reviewed at the interrupt. The original Ollama reports remain as fallback-development evidence, not judged-provider proof.
 
 ## Spike questions
 
@@ -55,7 +55,7 @@ Prerequisites:
 - Python 3.11+
 - [`uv`](https://docs.astral.sh/uv/)
 - Ollama with an accessible tool-capable model for fallback reproduction
-- AWS credentials, region, and Bedrock model access for the judged path
+- A named least-privilege AWS profile, explicit region, and Bedrock model access for the judged path
 
 Initial test/tooling setup:
 
@@ -80,6 +80,30 @@ uv run production-orchestrator-spike \
 ```
 
 The committed [`evidence/rejection.json`](evidence/rejection.json) and [`evidence/approval.json`](evidence/approval.json) are the audited baseline runs. Runtime databases and session files are ignored.
+
+Run the judged Bedrock paths with a named profile and explicit region:
+
+```bash
+uv run production-orchestrator-spike \
+  --decision reject \
+  --provider bedrock \
+  --model amazon.nova-lite-v1:0 \
+  --aws-profile production-orchestrator-bedrock \
+  --aws-region us-east-1 \
+  --runtime-dir data/runtime/bedrock-reject-local \
+  --report evidence/bedrock-rejection-local.json
+
+uv run production-orchestrator-spike \
+  --decision approve \
+  --provider bedrock \
+  --model amazon.nova-lite-v1:0 \
+  --aws-profile production-orchestrator-bedrock \
+  --aws-region us-east-1 \
+  --runtime-dir data/runtime/bedrock-approve-local \
+  --report evidence/bedrock-approval-local.json
+```
+
+The audited judged-provider reports are [`evidence/bedrock-rejection.json`](evidence/bedrock-rejection.json) and [`evidence/bedrock-approval.json`](evidence/bedrock-approval.json). Their hashes and paired gate result are recorded in [`evidence/bedrock-verdict.json`](evidence/bedrock-verdict.json).
 
 No AWS credentials, customer information, or runtime state belong in git.
 

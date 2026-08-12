@@ -1,11 +1,14 @@
 import argparse
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
+import boto3
 from strands import Agent
+from strands.models import BedrockModel
 from strands.models.ollama import OllamaModel
 from strands.session import FileSessionManager
 
@@ -32,9 +35,122 @@ If the tool is rejected, do not retry it. Report the rejection and stop.
 If it succeeds, report the blockers, displaced work, procurement, drafts, and applied revision.
 """
 
+REQUIRED_WORKFLOW_CHECKS = frozenset(
+    {
+        "all_required_strands_tools_observed",
+        "approval_applied_exact_plan",
+        "factual_audit_chain_complete",
+        "file_session_manager_persisted_state",
+        "no_unapproved_plan_application",
+        "read_tools_preserved_domain_state",
+        "real_strands_interrupt",
+        "rejection_preserved_domain_state",
+    }
+)
+
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def build_model(
+    *,
+    provider: str,
+    model_id: str,
+    host: str | None,
+    aws_profile: str | None,
+    aws_region: str | None,
+    session_factory: Callable[..., Any] = boto3.Session,
+    bedrock_model_factory: Callable[..., Any] = BedrockModel,
+    ollama_model_factory: Callable[..., Any] = OllamaModel,
+) -> Any:
+    """Build an explicitly configured judged or fallback Strands model."""
+
+    if provider == "bedrock":
+        if not aws_profile:
+            raise ValueError("Bedrock requires an explicit AWS profile")
+        if not aws_region:
+            raise ValueError("Bedrock requires an explicit AWS region")
+        session = session_factory(profile_name=aws_profile, region_name=aws_region)
+        return bedrock_model_factory(
+            boto_session=session,
+            model_id=model_id,
+            max_tokens=4096,
+            temperature=0,
+        )
+    if provider == "ollama":
+        if not host:
+            raise ValueError("Ollama requires an explicit host")
+        return ollama_model_factory(host=host, model_id=model_id, temperature=0)
+    raise ValueError(f"Unknown provider: {provider}")
+
+
+def provider_verdict(provider: str, *, workflow_passed: bool) -> dict[str, object]:
+    """Report one path without claiming the paired Bedrock gate has passed."""
+
+    is_bedrock = provider == "bedrock"
+    provider_path_passed = is_bedrock and workflow_passed
+    return {
+        "bedrock_status": "executed"
+        if provider_path_passed
+        else ("failed" if is_bedrock else "not-executed"),
+        "provider": "amazon-bedrock" if is_bedrock else "ollama-fallback",
+        "provider_path_passed": provider_path_passed,
+        "submission_gate_blocker": (
+            "Paired Bedrock rejection and approval evidence not evaluated"
+            if provider_path_passed
+            else (
+                "Bedrock workflow checks did not all pass"
+                if is_bedrock
+                else "Bedrock rejection and approval workflows not executed"
+            )
+        ),
+        "submission_gate_passed": False,
+        "verdict": "PARTIAL",
+    }
+
+
+def paired_bedrock_verdict(reports: list[dict[str, object]]) -> dict[str, object]:
+    """Validate the judged-provider gate only from substantiated independent paths."""
+
+    def is_passing_path(report: dict[str, object]) -> bool:
+        checks = report.get("checks")
+        return (
+            report.get("provider") == "amazon-bedrock"
+            and report.get("bedrock_status") == "executed"
+            and report.get("provider_path_passed") is True
+            and report.get("workflow_passed") is True
+            and isinstance(report.get("model_id"), str)
+            and bool(report["model_id"])
+            and isinstance(report.get("aws_region"), str)
+            and bool(report["aws_region"])
+            and isinstance(checks, dict)
+            and set(checks) == REQUIRED_WORKFLOW_CHECKS
+            and all(value is True for value in checks.values())
+        )
+
+    passing_reports = [report for report in reports if is_passing_path(report)]
+    passing_decisions = {report.get("decision") for report in passing_reports}
+    missing = sorted({"reject", "approve"} - passing_decisions)
+    if missing:
+        return {
+            "submission_gate_blocker": "Missing passing Bedrock path: " + ", ".join(missing),
+            "submission_gate_passed": False,
+            "verdict": "PARTIAL",
+        }
+
+    model_regions = {(report["model_id"], report["aws_region"]) for report in passing_reports}
+    if len(model_regions) != 1:
+        return {
+            "submission_gate_blocker": "Passing Bedrock paths used inconsistent model or region",
+            "submission_gate_passed": False,
+            "verdict": "PARTIAL",
+        }
+    return {
+        "submission_gate_blocker": None,
+        "submission_gate_passed": True,
+        "verdict": "VALIDATED",
+    }
 
 
 def _metrics(result) -> dict[str, object]:
@@ -67,8 +183,11 @@ def run_spike(
     decision: str,
     runtime_dir: Path,
     report_path: Path,
+    provider: str,
     model_id: str,
-    host: str,
+    host: str | None,
+    aws_profile: str | None,
+    aws_region: str | None,
 ) -> dict[str, object]:
     runtime_dir.mkdir(parents=True, exist_ok=False)
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -76,7 +195,13 @@ def run_spike(
     repository = SQLiteShopRepository(runtime_dir / "shop.db", clock=utc_now)
     repository.initialize(rush_order_scenario())
     service = ShopService(repository)
-    model = OllamaModel(host=host, model_id=model_id, temperature=0)
+    model = build_model(
+        provider=provider,
+        model_id=model_id,
+        host=host,
+        aws_profile=aws_profile,
+        aws_region=aws_region,
+    )
     session_manager = FileSessionManager(
         session_id=f"production-orchestrator-{decision}",
         storage_dir=str(runtime_dir / "sessions"),
@@ -137,9 +262,7 @@ def run_spike(
     final_metrics = _metrics(final_result)
     audit = _audit(repository)
     event_types = [event["event_type"] for event in audit]
-    plan_applied_events = [
-        event for event in audit if event["event_type"] == "plan_applied"
-    ]
+    plan_applied_events = [event for event in audit if event["event_type"] == "plan_applied"]
     tool_usage = final_metrics.get("tool_usage")
     observed_tools = set(tool_usage) if isinstance(tool_usage, dict) else set()
     required_tools = {
@@ -170,8 +293,7 @@ def run_spike(
         "all_required_strands_tools_observed": required_tools.issubset(observed_tools),
         "file_session_manager_persisted_state": bool(session_files),
         "rejection_preserved_domain_state": (
-            decision != "reject"
-            or (initial_digest == final_digest and final_state.revision == 1)
+            decision != "reject" or (initial_digest == final_digest and final_state.revision == 1)
         ),
         "approval_applied_exact_plan": (
             decision != "approve"
@@ -179,8 +301,7 @@ def run_spike(
                 final_state.revision == 2
                 and "approval_granted" in event_types
                 and len(plan_applied_events) == 1
-                and plan_applied_events[0]["proposal_hash"]
-                == reviewed_proposal_hash
+                and plan_applied_events[0]["proposal_hash"] == reviewed_proposal_hash
                 and all(
                     task.proposal_hash == reviewed_proposal_hash
                     for task in final_state.procurement_tasks
@@ -193,17 +314,16 @@ def run_spike(
     }
 
     workflow_passed = all(checks.values())
+    provider_status = provider_verdict(provider, workflow_passed=workflow_passed)
     report: dict[str, Any] = {
         "generated_at": utc_now(),
         "spike": "Production Orchestrator Strands interrupt loop",
         "decision": decision,
-        "provider": "ollama-fallback",
         "model_id": model_id,
+        "aws_profile": aws_profile if provider == "bedrock" else None,
+        "aws_region": aws_region if provider == "bedrock" else None,
         "strands_agents_version": version("strands-agents"),
-        "bedrock_status": "blocked-no-aws-credential-chain",
-        "verdict": "PARTIAL",
-        "submission_gate_passed": False,
-        "submission_gate_blocker": "Bedrock invocation not executed: no AWS credential chain",
+        **provider_status,
         "first_stop_reason": first_result.stop_reason,
         "final_stop_reason": final_result.stop_reason,
         "interrupts": interrupt_report,
@@ -246,7 +366,7 @@ def run_spike(
     print("AUDIT_EVENTS=" + ",".join(str(event) for event in event_types))
     print("CHECKS=" + json.dumps(checks, sort_keys=True))
     print(f"WORKFLOW_PASSED={str(workflow_passed).lower()}")
-    print("SUBMISSION_GATE_PASSED=false")
+    print("SUBMISSION_GATE_PASSED=" + str(provider_status["submission_gate_passed"]).lower())
     print(f"REPORT={report_path}")
 
     if not workflow_passed:
@@ -259,15 +379,21 @@ def main() -> None:
     parser.add_argument("--decision", choices=("reject", "approve"), required=True)
     parser.add_argument("--runtime-dir", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--provider", choices=("ollama", "bedrock"), default="ollama")
     parser.add_argument("--model", default="glm-5.2:cloud")
     parser.add_argument("--host", default="http://localhost:11434")
+    parser.add_argument("--aws-profile")
+    parser.add_argument("--aws-region")
     args = parser.parse_args()
     run_spike(
         decision=args.decision,
         runtime_dir=args.runtime_dir,
         report_path=args.report,
+        provider=args.provider,
         model_id=args.model,
         host=args.host,
+        aws_profile=args.aws_profile,
+        aws_region=args.aws_region,
     )
 
 

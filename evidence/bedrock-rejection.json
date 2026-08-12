@@ -1,0 +1,437 @@
+{
+  "audit_events": [
+    {
+      "created_at": "2026-08-12T11:51:13.124951Z",
+      "details": {
+        "revision": 1
+      },
+      "event_type": "scenario_initialized",
+      "proposal_hash": null,
+      "sequence": 1
+    },
+    {
+      "created_at": "2026-08-12T11:51:14.247456Z",
+      "details": {
+        "order_ids": [
+          "RUSH-200",
+          "STANDARD-100"
+        ],
+        "state_revision": 1
+      },
+      "event_type": "active_orders_read",
+      "proposal_hash": null,
+      "sequence": 2
+    },
+    {
+      "created_at": "2026-08-12T11:51:14.775882Z",
+      "details": {
+        "material_ids": [
+          "THREAD-BLUE-40",
+          "THREAD-RED-40"
+        ],
+        "state_revision": 1
+      },
+      "event_type": "inventory_read",
+      "proposal_hash": null,
+      "sequence": 3
+    },
+    {
+      "created_at": "2026-08-12T11:51:15.411396Z",
+      "details": {
+        "machine_ids": [
+          "EMB-01"
+        ],
+        "scheduled_order_ids": [
+          "STANDARD-100"
+        ],
+        "state_revision": 1
+      },
+      "event_type": "machine_capacity_read",
+      "proposal_hash": null,
+      "sequence": 4
+    },
+    {
+      "created_at": "2026-08-12T11:51:16.146506Z",
+      "details": {
+        "blocker_kinds": [
+          "inventory_shortage",
+          "capacity_conflict"
+        ],
+        "state_revision": 1,
+        "target_order_id": "RUSH-200"
+      },
+      "event_type": "blockers_analyzed",
+      "proposal_hash": null,
+      "sequence": 5
+    },
+    {
+      "created_at": "2026-08-12T11:51:16.967206Z",
+      "details": {
+        "base_revision": 1,
+        "blocker_kinds": [
+          "inventory_shortage",
+          "capacity_conflict"
+        ],
+        "proposal_id": "plan-46d63343be0b",
+        "target_order_id": "RUSH-200"
+      },
+      "event_type": "proposal_created",
+      "proposal_hash": "46d63343be0bbf98d2efa7d82bd6269cbf7b8c09401f52b7c73a76ec326685b5",
+      "sequence": 6
+    },
+    {
+      "created_at": "2026-08-12T11:51:17.926732Z",
+      "details": {
+        "audiences": [
+          "customer",
+          "operator",
+          "supplier"
+        ]
+      },
+      "event_type": "communications_drafted",
+      "proposal_hash": "46d63343be0bbf98d2efa7d82bd6269cbf7b8c09401f52b7c73a76ec326685b5",
+      "sequence": 7
+    },
+    {
+      "created_at": "2026-08-12T11:51:18.913691Z",
+      "details": {
+        "actor": "spike-operator",
+        "reason": "Rejected through Strands interrupt",
+        "reviewed_hash": "46d63343be0bbf98d2efa7d82bd6269cbf7b8c09401f52b7c73a76ec326685b5"
+      },
+      "event_type": "approval_rejected",
+      "proposal_hash": "46d63343be0bbf98d2efa7d82bd6269cbf7b8c09401f52b7c73a76ec326685b5",
+      "sequence": 8
+    }
+  ],
+  "aws_profile": "production-orchestrator-bedrock",
+  "aws_region": "us-east-1",
+  "bedrock_status": "executed",
+  "checks": {
+    "all_required_strands_tools_observed": true,
+    "approval_applied_exact_plan": true,
+    "factual_audit_chain_complete": true,
+    "file_session_manager_persisted_state": true,
+    "no_unapproved_plan_application": true,
+    "read_tools_preserved_domain_state": true,
+    "real_strands_interrupt": true,
+    "rejection_preserved_domain_state": true
+  },
+  "decision": "reject",
+  "digest_at_interrupt": "e953ff6f564bbf3d124b36986c90aa286be7d5adedff9cb05a77df98a4118fac",
+  "final_domain_digest": "e953ff6f564bbf3d124b36986c90aa286be7d5adedff9cb05a77df98a4118fac",
+  "final_message": "<thinking>The production plan was rejected by a human. I will report the rejection and stop the workflow.</thinking>\n\n<response>The production plan for RUSH-200 was rejected by a human. The workflow has been stopped.</response>\n",
+  "final_metrics": {
+    "accumulated_metrics": {
+      "latencyMs": 5626
+    },
+    "accumulated_usage": {
+      "inputTokens": 14633,
+      "outputTokens": 684,
+      "totalTokens": 15317
+    },
+    "tool_usage": {
+      "analyze_shop_blockers": {
+        "execution_stats": {
+          "average_time": 0.0011174678802490234,
+          "call_count": 1,
+          "error_count": 0,
+          "success_count": 1,
+          "success_rate": 1.0,
+          "total_time": 0.0011174678802490234
+        },
+        "tool_info": {
+          "input_params": {
+            "target_order_id": "RUSH-200"
+          },
+          "name": "analyze_shop_blockers",
+          "tool_use_id": "tooluse_N0c5CljXoxBvW0kfJxw1cK"
+        }
+      },
+      "apply_production_plan": {
+        "execution_stats": {
+          "average_time": 0.00031197071075439453,
+          "call_count": 2,
+          "error_count": 2,
+          "success_count": 0,
+          "success_rate": 0.0,
+          "total_time": 0.0006239414215087891
+        },
+        "tool_info": {
+          "input_params": {
+            "proposal_hash": "46d63343be0bbf98d2efa7d82bd6269cbf7b8c09401f52b7c73a76ec326685b5"
+          },
+          "name": "apply_production_plan",
+          "tool_use_id": "tooluse_PunPDAUxYo2f7A2Rjrco1U"
+        }
+      },
+      "draft_communications": {
+        "execution_stats": {
+          "average_time": 0.0006468296051025391,
+          "call_count": 1,
+          "error_count": 0,
+          "success_count": 1,
+          "success_rate": 1.0,
+          "total_time": 0.0006468296051025391
+        },
+        "tool_info": {
+          "input_params": {
+            "proposal_hash": "46d63343be0bbf98d2efa7d82bd6269cbf7b8c09401f52b7c73a76ec326685b5"
+          },
+          "name": "draft_communications",
+          "tool_use_id": "tooluse_3ErmJSvJ2VWTLn4QgGZgBt"
+        }
+      },
+      "get_inventory": {
+        "execution_stats": {
+          "average_time": 0.0009074211120605469,
+          "call_count": 1,
+          "error_count": 0,
+          "success_count": 1,
+          "success_rate": 1.0,
+          "total_time": 0.0009074211120605469
+        },
+        "tool_info": {
+          "input_params": {},
+          "name": "get_inventory",
+          "tool_use_id": "tooluse_cGVSvy9ro2DGJhJpnkstJT"
+        }
+      },
+      "get_machine_capacity": {
+        "execution_stats": {
+          "average_time": 0.000774383544921875,
+          "call_count": 1,
+          "error_count": 0,
+          "success_count": 1,
+          "success_rate": 1.0,
+          "total_time": 0.000774383544921875
+        },
+        "tool_info": {
+          "input_params": {},
+          "name": "get_machine_capacity",
+          "tool_use_id": "tooluse_Dwr3w531dfkys6fm0FR2zX"
+        }
+      },
+      "list_active_orders": {
+        "execution_stats": {
+          "average_time": 0.0008931159973144531,
+          "call_count": 1,
+          "error_count": 0,
+          "success_count": 1,
+          "success_rate": 1.0,
+          "total_time": 0.0008931159973144531
+        },
+        "tool_info": {
+          "input_params": {},
+          "name": "list_active_orders",
+          "tool_use_id": "tooluse_3hkxORR2hlI4FEjZdo5aN7"
+        }
+      },
+      "propose_schedule": {
+        "execution_stats": {
+          "average_time": 0.0012416839599609375,
+          "call_count": 1,
+          "error_count": 0,
+          "success_count": 1,
+          "success_rate": 1.0,
+          "total_time": 0.0012416839599609375
+        },
+        "tool_info": {
+          "input_params": {
+            "target_order_id": "RUSH-200"
+          },
+          "name": "propose_schedule",
+          "tool_use_id": "tooluse_HHdO13CalRQ2RjtKm3guen"
+        }
+      }
+    },
+    "total_cycles": 9,
+    "total_duration": 6.314323663711548
+  },
+  "final_schedule": [
+    {
+      "day": "2026-08-12",
+      "duration_hours": 6,
+      "machine_id": "EMB-01",
+      "order_id": "STANDARD-100"
+    }
+  ],
+  "final_state_revision": 1,
+  "final_stop_reason": "end_turn",
+  "first_metrics": {
+    "accumulated_metrics": {
+      "latencyMs": 5626
+    },
+    "accumulated_usage": {
+      "inputTokens": 14633,
+      "outputTokens": 684,
+      "totalTokens": 15317
+    },
+    "tool_usage": {
+      "analyze_shop_blockers": {
+        "execution_stats": {
+          "average_time": 0.0011174678802490234,
+          "call_count": 1,
+          "error_count": 0,
+          "success_count": 1,
+          "success_rate": 1.0,
+          "total_time": 0.0011174678802490234
+        },
+        "tool_info": {
+          "input_params": {
+            "target_order_id": "RUSH-200"
+          },
+          "name": "analyze_shop_blockers",
+          "tool_use_id": "tooluse_N0c5CljXoxBvW0kfJxw1cK"
+        }
+      },
+      "apply_production_plan": {
+        "execution_stats": {
+          "average_time": 0.00016236305236816406,
+          "call_count": 1,
+          "error_count": 1,
+          "success_count": 0,
+          "success_rate": 0.0,
+          "total_time": 0.00016236305236816406
+        },
+        "tool_info": {
+          "input_params": {
+            "proposal_hash": "46d63343be0bbf98d2efa7d82bd6269cbf7b8c09401f52b7c73a76ec326685b5"
+          },
+          "name": "apply_production_plan",
+          "tool_use_id": "tooluse_PunPDAUxYo2f7A2Rjrco1U"
+        }
+      },
+      "draft_communications": {
+        "execution_stats": {
+          "average_time": 0.0006468296051025391,
+          "call_count": 1,
+          "error_count": 0,
+          "success_count": 1,
+          "success_rate": 1.0,
+          "total_time": 0.0006468296051025391
+        },
+        "tool_info": {
+          "input_params": {
+            "proposal_hash": "46d63343be0bbf98d2efa7d82bd6269cbf7b8c09401f52b7c73a76ec326685b5"
+          },
+          "name": "draft_communications",
+          "tool_use_id": "tooluse_3ErmJSvJ2VWTLn4QgGZgBt"
+        }
+      },
+      "get_inventory": {
+        "execution_stats": {
+          "average_time": 0.0009074211120605469,
+          "call_count": 1,
+          "error_count": 0,
+          "success_count": 1,
+          "success_rate": 1.0,
+          "total_time": 0.0009074211120605469
+        },
+        "tool_info": {
+          "input_params": {},
+          "name": "get_inventory",
+          "tool_use_id": "tooluse_cGVSvy9ro2DGJhJpnkstJT"
+        }
+      },
+      "get_machine_capacity": {
+        "execution_stats": {
+          "average_time": 0.000774383544921875,
+          "call_count": 1,
+          "error_count": 0,
+          "success_count": 1,
+          "success_rate": 1.0,
+          "total_time": 0.000774383544921875
+        },
+        "tool_info": {
+          "input_params": {},
+          "name": "get_machine_capacity",
+          "tool_use_id": "tooluse_Dwr3w531dfkys6fm0FR2zX"
+        }
+      },
+      "list_active_orders": {
+        "execution_stats": {
+          "average_time": 0.0008931159973144531,
+          "call_count": 1,
+          "error_count": 0,
+          "success_count": 1,
+          "success_rate": 1.0,
+          "total_time": 0.0008931159973144531
+        },
+        "tool_info": {
+          "input_params": {},
+          "name": "list_active_orders",
+          "tool_use_id": "tooluse_3hkxORR2hlI4FEjZdo5aN7"
+        }
+      },
+      "propose_schedule": {
+        "execution_stats": {
+          "average_time": 0.0012416839599609375,
+          "call_count": 1,
+          "error_count": 0,
+          "success_count": 1,
+          "success_rate": 1.0,
+          "total_time": 0.0012416839599609375
+        },
+        "tool_info": {
+          "input_params": {
+            "target_order_id": "RUSH-200"
+          },
+          "name": "propose_schedule",
+          "tool_use_id": "tooluse_HHdO13CalRQ2RjtKm3guen"
+        }
+      }
+    },
+    "total_cycles": 7,
+    "total_duration": 5.711058139801025
+  },
+  "first_stop_reason": "interrupt",
+  "generated_at": "2026-08-12T11:51:19.517779Z",
+  "initial_domain_digest": "e953ff6f564bbf3d124b36986c90aa286be7d5adedff9cb05a77df98a4118fac",
+  "interrupts": [
+    {
+      "id": "v1:before_tool_call:tooluse_PunPDAUxYo2f7A2Rjrco1U:0e47f884-de38-5d20-88d9-b87e87ad695f",
+      "name": "production-orchestrator-apply-plan",
+      "reason": {
+        "base_revision": 1,
+        "procurement_actions": [
+          {
+            "material_id": "THREAD-RED-40",
+            "quantity": 600,
+            "reason": "Cover shortage for RUSH-200"
+          }
+        ],
+        "proposal_hash": "46d63343be0bbf98d2efa7d82bd6269cbf7b8c09401f52b7c73a76ec326685b5",
+        "proposal_id": "plan-46d63343be0b",
+        "schedule_changes": [
+          {
+            "from_day": null,
+            "machine_id": "EMB-01",
+            "order_id": "RUSH-200",
+            "reason": "Schedule approved rush order",
+            "to_day": "2026-08-12"
+          },
+          {
+            "from_day": "2026-08-12",
+            "machine_id": "EMB-01",
+            "order_id": "STANDARD-100",
+            "reason": "Make capacity for higher-priority RUSH-200",
+            "to_day": "2026-08-13"
+          }
+        ],
+        "target_order_id": "RUSH-200"
+      }
+    }
+  ],
+  "model_id": "amazon.nova-lite-v1:0",
+  "persisted_session_file_count": 18,
+  "procurement_tasks": [],
+  "provider": "amazon-bedrock",
+  "provider_path_passed": true,
+  "spike": "Production Orchestrator Strands interrupt loop",
+  "strands_agents_version": "1.51.0",
+  "submission_gate_blocker": "Paired Bedrock rejection and approval evidence not evaluated",
+  "submission_gate_passed": false,
+  "verdict": "PARTIAL",
+  "workflow_passed": true
+}
