@@ -25,11 +25,11 @@ uv sync --locked
 uv run production-orchestrator-demo
 ```
 
-Open `http://127.0.0.1:8765`. The demo explains a synthetic shop decision in operational terms: a priority rush order would put today's embroidery machine two hours over capacity and is 600 units short of red thread. The agent recommends moving lower-priority work to tomorrow, scheduling the rush order today, recording the material follow-up, and preparing three unsent communications as one coordinated plan. Choose **Keep current schedule** or **Approve coordinated plan** to see the exact business consequence.
+Open `http://127.0.0.1:8765`. The demo runs the **complete seven-tool Strands workflow**: the agent checks orders, inventory, and machine capacity through real tools, analyzes blockers with the deterministic planner, persists an immutable hash-addressed proposal, drafts unsent communications, and stops at a real Strands interrupt before the consequential write. The page renders the recorded tool trail as an activity feed, a before/after production board, the readable message drafts, and the exact decision consequences. Choose **Keep current schedule** or **Approve coordinated plan** and a fresh process reconstructs the persisted session and resumes the official interrupt.
 
-The interface leads with the shop problem, recommendation, usefulness, and decision consequences. Expand **Technical proof** to inspect the immutable proposal hash, distinct start/resume process IDs, official restored interrupt response, application count, and audit chain.
+Three synthetic scenarios are selectable from the page — a rush order with a capacity conflict and thread shortage, a team-jersey order that displaces two smaller jobs, and a metallic monogram batch with a material shortage. Expand **Technical proof** to inspect the immutable proposal hash, model/provider facts, distinct start/resume process IDs, and the full audit chain.
 
-The local demo uses the deterministic Strands model by default, so it requires no paid model call. It binds only to localhost, stores transient SQLite/session state under the ignored `data/demo-runtime/` path, prepares communications as unsent drafts, and does not provide production authentication, multi-tenancy, deployment, or external integrations.
+The local demo drives the workflow with a deterministic local tool-calling model, so it requires no paid model call; every shop fact still comes from a real tool call and the judged-provider evidence for the same workflow was executed through Amazon Bedrock (see `evidence/`). It binds only to localhost, stores transient SQLite/session state under the ignored `data/demo-runtime/` path, prepares communications as unsent drafts, and does not provide production authentication, multi-tenancy, deployment, or external integrations.
 
 ## Problem
 
