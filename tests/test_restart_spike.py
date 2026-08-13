@@ -443,21 +443,24 @@ def test_bedrock_workflow_provider_validates_configuration_offline(tmp_path: Pat
 
 
 def test_provider_configuration_contract_is_shared_across_providers() -> None:
-    for provider, expects_aws in (
-        ("deterministic", False),
-        ("deterministic-workflow", False),
-        ("bedrock", True),
-        ("bedrock-workflow", True),
+    for provider, expects_aws, expects_host in (
+        ("deterministic", False, False),
+        ("deterministic-workflow", False, False),
+        ("bedrock", True, False),
+        ("bedrock-workflow", True, False),
+        ("ollama-workflow", False, True),
     ):
         config = restart_spike._provider_configuration(
             provider=provider,
             model_id="model",
             aws_profile="profile",
             aws_region="region",
+            ollama_host="http://localhost:11434",
         )
         assert config["provider"] == provider
         assert config["aws_profile"] == ("profile" if expects_aws else None)
         assert config["aws_region"] == ("region" if expects_aws else None)
+        assert config["ollama_host"] == ("http://localhost:11434" if expects_host else None)
 
 
 def test_provider_configuration_carries_the_credential_source() -> None:
@@ -546,6 +549,199 @@ def test_checkpoint_without_credential_source_defaults_to_profile(tmp_path: Path
     loaded = restart_spike._load_checkpoint(checkpoint_path)
 
     assert loaded["credential_source"] == "profile"
+
+
+def test_checkpoint_without_ollama_host_defaults_to_none(tmp_path: Path) -> None:
+    """Checkpoints written before the local-model provider existed must resume."""
+
+    runtime_dir = tmp_path / "pre-ollama-checkpoint"
+    checkpoint_path = runtime_dir / "checkpoint.json"
+    _run_phase(
+        "start",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--provider",
+        "deterministic-workflow",
+        "--model",
+        "deterministic-workflow-model",
+        "--scenario",
+        "rush-order",
+    )
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint.pop("ollama_host", None)
+    checkpoint_path.write_text(json.dumps(checkpoint))
+
+    loaded = restart_spike._load_checkpoint(checkpoint_path)
+
+    assert loaded["ollama_host"] is None
+
+
+def _rewrite_checkpoint_as_ollama_workflow(checkpoint_path: Path, host: str) -> None:
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint.update(
+        provider="ollama-workflow",
+        model_id="qwen3:4b",
+        aws_profile=None,
+        aws_region=None,
+        credential_source="profile",
+        ollama_host=host,
+    )
+    checkpoint["agent_id"] = restart_spike.agent_id_for(
+        provider="ollama-workflow",
+        model_id="qwen3:4b",
+        proposal_hash=str(checkpoint["proposal_hash"]),
+        aws_profile=None,
+        aws_region=None,
+        scenario=str(checkpoint["scenario"]),
+    )
+    checkpoint_path.write_text(json.dumps(checkpoint))
+
+
+def test_ollama_workflow_resume_accepts_its_own_checkpoint_configuration(
+    tmp_path: Path,
+) -> None:
+    """An ollama-workflow checkpoint must pass the trusted-configuration gate
+    when resumed with matching arguments; the run then fails at the real local
+    model connection (nothing listens on the unreachable host), not the gate."""
+
+    runtime_dir = tmp_path / "ollama-workflow-resume"
+    checkpoint_path = runtime_dir / "checkpoint.json"
+    _run_phase(
+        "start",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--provider",
+        "deterministic-workflow",
+        "--model",
+        "deterministic-workflow-model",
+        "--scenario",
+        "rush-order",
+    )
+    unreachable = "http://127.0.0.1:9"
+    _rewrite_checkpoint_as_ollama_workflow(checkpoint_path, unreachable)
+
+    report_path = runtime_dir / "report.json"
+    result = _run_phase(
+        "resume",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--decision",
+        "reject",
+        "--report",
+        str(report_path),
+        "--provider",
+        "ollama-workflow",
+        "--model",
+        "qwen3:4b",
+        "--ollama-host",
+        unreachable,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "trusted provider configuration" not in result.stderr.lower()
+    assert not report_path.exists()
+
+
+def test_resume_refuses_a_swapped_ollama_host(tmp_path: Path) -> None:
+    """The host names which model server the run trusts; resuming against a
+    different one must fail closed before any model call."""
+
+    runtime_dir = tmp_path / "swapped-ollama-host"
+    checkpoint_path = runtime_dir / "checkpoint.json"
+    _run_phase(
+        "start",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--provider",
+        "deterministic-workflow",
+        "--model",
+        "deterministic-workflow-model",
+        "--scenario",
+        "rush-order",
+    )
+    _rewrite_checkpoint_as_ollama_workflow(checkpoint_path, "http://127.0.0.1:9")
+
+    report_path = runtime_dir / "report.json"
+    result = _run_phase(
+        "resume",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--decision",
+        "reject",
+        "--report",
+        str(report_path),
+        "--provider",
+        "ollama-workflow",
+        "--model",
+        "qwen3:4b",
+        "--ollama-host",
+        "http://127.0.0.1:10",
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "trusted provider configuration" in result.stderr.lower()
+    assert not report_path.exists()
+
+
+def test_ollama_workflow_checkpoint_requires_a_host(tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "ollama-missing-host"
+    checkpoint_path = runtime_dir / "checkpoint.json"
+    _run_phase(
+        "start",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--provider",
+        "deterministic-workflow",
+        "--model",
+        "deterministic-workflow-model",
+        "--scenario",
+        "rush-order",
+    )
+    _rewrite_checkpoint_as_ollama_workflow(checkpoint_path, "http://127.0.0.1:9")
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint["ollama_host"] = None
+    checkpoint_path.write_text(json.dumps(checkpoint))
+
+    with pytest.raises(ValueError, match="Ollama configuration"):
+        restart_spike._load_checkpoint(checkpoint_path)
+
+
+def test_non_ollama_checkpoint_cannot_claim_a_host(tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "non-ollama-host"
+    checkpoint_path = runtime_dir / "checkpoint.json"
+    _run_phase(
+        "start",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--provider",
+        "deterministic-workflow",
+        "--model",
+        "deterministic-workflow-model",
+        "--scenario",
+        "rush-order",
+    )
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint["ollama_host"] = "http://127.0.0.1:11434"
+    checkpoint_path.write_text(json.dumps(checkpoint))
+
+    with pytest.raises(ValueError, match="Ollama configuration"):
+        restart_spike._load_checkpoint(checkpoint_path)
 
 
 def test_non_aws_checkpoint_cannot_claim_container_role_credentials(tmp_path: Path) -> None:

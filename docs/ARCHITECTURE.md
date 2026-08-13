@@ -101,7 +101,7 @@ The provider configuration includes **which credential chain the run is entitled
 |---|---|---|---|
 | Judge-facing web demo | `uv run production-orchestrator-demo` | deterministic local tool-calling model, no paid call | Customer email, live activity feed of the real eight-tool trail, before/after production board, unsent drafts, approve/reject, technical proof panel with hash, distinct process ids, and audit chain |
 | Paired workflow spike | `production-orchestrator-spike` | Bedrock `amazon.nova-lite-v1:0` | Full workflow under the judged provider, rejection and exact-approval paths, committed evidence reports |
-| Restart spike | `production-orchestrator-restart-spike start` / `resume` | Bedrock or deterministic, with or without intake | Two-process approval with the checkpoint gate; prints `INTERRUPT_ID`, `PROPOSAL_HASH`, and `WORKFLOW_PASSED` |
+| Restart spike | `production-orchestrator-restart-spike start` / `resume` | Bedrock, local Ollama (`ollama-workflow`, no cloud account), or deterministic — with or without intake | Two-process approval with the checkpoint gate; prints `INTERRUPT_ID`, `PROPOSAL_HASH`, and `WORKFLOW_PASSED`. The identical governance code runs under every provider, which is the provider-independence claim made concrete |
 
 The web demo runs the identical tool sequence as the judged path with a deterministic model substituted for the provider, so it is honest to demonstrate offline and it costs nothing to replay. It binds to localhost, keeps transient state under the ignored `data/demo-runtime/`, prepares communications as unsent drafts, and ships no authentication, multi-tenancy, or external integration.
 
