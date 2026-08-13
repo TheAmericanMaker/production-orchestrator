@@ -76,6 +76,26 @@ def workflow_intake_prompt(spec) -> str:
     )
 
 
+def _provider_configuration(
+    *,
+    provider: str,
+    model_id: str,
+    aws_profile: str | None,
+    aws_region: str | None,
+) -> dict[str, str | None]:
+    """The provider identity persisted at start and re-trusted at resume.
+
+    start(), resume(), and agent_id_for() must all derive AWS fields from
+    this one function so the checkpoint contract cannot drift by provider.
+    """
+    return {
+        "provider": provider,
+        "model_id": model_id,
+        "aws_profile": aws_profile if provider in _AWS_PROVIDERS else None,
+        "aws_region": aws_region if provider in _AWS_PROVIDERS else None,
+    }
+
+
 def agent_id_for(
     *,
     provider: str,
@@ -87,12 +107,14 @@ def agent_id_for(
 ) -> str:
     configuration = json.dumps(
         {
-            "provider": provider,
-            "model_id": model_id,
+            **_provider_configuration(
+                provider=provider,
+                model_id=model_id,
+                aws_profile=aws_profile,
+                aws_region=aws_region,
+            ),
             "proposal_hash": None if provider in _WORKFLOW_PROVIDERS else proposal_hash,
             "scenario": scenario,
-            "aws_profile": aws_profile if provider in _AWS_PROVIDERS else None,
-            "aws_region": aws_region if provider in _AWS_PROVIDERS else None,
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -434,9 +456,7 @@ def start(
         raise RuntimeError("Interrupted proposal is not persisted")
     digest_at_interrupt = repository.domain_digest()
     intake_events = [
-        event
-        for event in repository.audit_events()
-        if event.event_type == "request_intake"
+        event for event in repository.audit_events() if event.event_type == "request_intake"
     ]
     if provider in _WORKFLOW_PROVIDERS:
         if len(intake_events) != 1:
@@ -465,10 +485,12 @@ def start(
         "start_process_id": os.getpid(),
         "initial_domain_digest": baseline_digest,
         "digest_at_interrupt": digest_at_interrupt,
-        "provider": provider,
-        "model_id": model_id,
-        "aws_profile": aws_profile if provider in _AWS_PROVIDERS else None,
-        "aws_region": aws_region if provider in _AWS_PROVIDERS else None,
+        **_provider_configuration(
+            provider=provider,
+            model_id=model_id,
+            aws_profile=aws_profile,
+            aws_region=aws_region,
+        ),
     }
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     checkpoint_path.write_text(json.dumps(checkpoint, indent=2, sort_keys=True) + "\n")
@@ -507,7 +529,12 @@ def _load_checkpoint(path: Path) -> dict[str, object]:
             raise ValueError(f"Checkpoint {key} is invalid")
     if not isinstance(data["start_process_id"], int):
         raise TypeError("Checkpoint process identity is invalid")
-    if data["provider"] not in {"deterministic", "bedrock", WORKFLOW_PROVIDER, BEDROCK_WORKFLOW_PROVIDER}:
+    if data["provider"] not in {
+        "deterministic",
+        "bedrock",
+        WORKFLOW_PROVIDER,
+        BEDROCK_WORKFLOW_PROVIDER,
+    }:
         raise ValueError("Checkpoint provider is invalid")
     if not isinstance(data["model_id"], str) or not data["model_id"]:
         raise ValueError("Checkpoint model identity is invalid")
@@ -549,12 +576,12 @@ def resume(
     aws_region: str | None,
 ) -> dict[str, object]:
     checkpoint = _load_checkpoint(checkpoint_path)
-    trusted_configuration = {
-        "provider": provider,
-        "model_id": model_id,
-        "aws_profile": aws_profile if provider == "bedrock" else None,
-        "aws_region": aws_region if provider == "bedrock" else None,
-    }
+    trusted_configuration = _provider_configuration(
+        provider=provider,
+        model_id=model_id,
+        aws_profile=aws_profile,
+        aws_region=aws_region,
+    )
     persisted_configuration = {key: checkpoint[key] for key in trusted_configuration}
     if persisted_configuration != trusted_configuration:
         raise ValueError("Checkpoint does not match trusted provider configuration")
