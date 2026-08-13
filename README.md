@@ -52,6 +52,11 @@ Given a synthetic shop containing a rush order, material shortage, machine-capac
 
 See [`DEVELOPMENT_CONTRACT.md`](DEVELOPMENT_CONTRACT.md) for the non-negotiable implementation and contest boundaries.
 
+## Documentation
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system and cross-process approval diagrams, and the table mapping every guarantee to the test or committed evidence that proves it
+- [`docs/VIDEO_SCRIPT.md`](docs/VIDEO_SCRIPT.md) — shot-by-shot submission video script, including verified commands for the fail-closed capture
+
 ## Current verdict
 
 The deterministic core and real Strands interrupt loop are operational. All seven Strands tools were observed in independent rejection and approval runs, `FileSessionManager` persisted each session, and all eight machine-evaluated workflow checks passed through Amazon Bedrock.
