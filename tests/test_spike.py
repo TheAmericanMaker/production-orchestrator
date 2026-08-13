@@ -27,6 +27,13 @@ class FakeSession:
         self.region_name = region_name
 
 
+class FakeAmbientSession:
+    """A session built from the ambient credential chain, with no named profile."""
+
+    def __init__(self, **kwargs: object) -> None:
+        self.kwargs = kwargs
+
+
 def test_build_model_constructs_bedrock_with_named_profile_and_region() -> None:
     captured: dict[str, object] = {}
 
@@ -84,6 +91,77 @@ def test_build_model_rejects_missing_bedrock_profile() -> None:
             host=None,
             aws_profile=None,
             aws_region="us-east-1",
+        )
+
+
+def test_container_role_credentials_build_bedrock_without_a_named_profile() -> None:
+    """AgentCore Runtime supplies task-role credentials; no named profile exists there."""
+
+    captured: dict[str, object] = {}
+
+    def bedrock_model_factory(*, boto_session, **kwargs):
+        captured["session"] = boto_session
+        return FakeModel(kwargs)
+
+    model = spike.build_model(
+        provider="bedrock",
+        model_id="amazon.nova-lite-v1:0",
+        host=None,
+        aws_profile=None,
+        aws_region="us-east-1",
+        credential_source="container-role",
+        session_factory=FakeAmbientSession,
+        bedrock_model_factory=bedrock_model_factory,
+    )
+
+    session = captured["session"]
+    assert isinstance(session, FakeAmbientSession)
+    assert session.kwargs == {"region_name": "us-east-1"}
+    assert model.kwargs == {
+        "max_tokens": 4096,
+        "model_id": "amazon.nova-lite-v1:0",
+        "temperature": 0,
+    }
+
+
+def test_container_role_credentials_still_require_an_explicit_region() -> None:
+    with pytest.raises(ValueError, match="AWS region"):
+        spike.build_model(
+            provider="bedrock",
+            model_id="amazon.nova-lite-v1:0",
+            host=None,
+            aws_profile=None,
+            aws_region=None,
+            credential_source="container-role",
+            session_factory=FakeAmbientSession,
+        )
+
+
+def test_container_role_credentials_refuse_a_named_profile() -> None:
+    """A profile alongside role credentials is ambiguous, so it fails closed."""
+
+    with pytest.raises(ValueError, match="profile"):
+        spike.build_model(
+            provider="bedrock",
+            model_id="amazon.nova-lite-v1:0",
+            host=None,
+            aws_profile="production-orchestrator-bedrock",
+            aws_region="us-east-1",
+            credential_source="container-role",
+            session_factory=FakeAmbientSession,
+        )
+
+
+def test_unknown_credential_source_fails_closed() -> None:
+    with pytest.raises(ValueError, match="credential source"):
+        spike.build_model(
+            provider="bedrock",
+            model_id="amazon.nova-lite-v1:0",
+            host=None,
+            aws_profile=None,
+            aws_region="us-east-1",
+            credential_source="metadata-service",
+            session_factory=FakeAmbientSession,
         )
 
 

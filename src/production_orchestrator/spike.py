@@ -49,6 +49,11 @@ REQUIRED_WORKFLOW_CHECKS = frozenset(
 )
 
 
+PROFILE_CREDENTIALS = "profile"
+CONTAINER_ROLE_CREDENTIALS = "container-role"
+CREDENTIAL_SOURCES = frozenset({PROFILE_CREDENTIALS, CONTAINER_ROLE_CREDENTIALS})
+
+
 def utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
@@ -60,18 +65,33 @@ def build_model(
     host: str | None,
     aws_profile: str | None,
     aws_region: str | None,
+    credential_source: str = PROFILE_CREDENTIALS,
     session_factory: Callable[..., Any] = boto3.Session,
     bedrock_model_factory: Callable[..., Any] = BedrockModel,
     ollama_model_factory: Callable[..., Any] = OllamaModel,
 ) -> Any:
-    """Build an explicitly configured judged or fallback Strands model."""
+    """Build an explicitly configured judged or fallback Strands model.
+
+    `credential_source` names where Bedrock credentials come from, because a
+    named profile does not exist in every runtime: developer machines use
+    `profile`, while a container on AgentCore Runtime receives task-role
+    credentials from the ambient chain (`container-role`). The source is
+    always explicit — never inferred from what happens to be available.
+    """
 
     if provider == "bedrock":
-        if not aws_profile:
+        if credential_source not in CREDENTIAL_SOURCES:
+            raise ValueError(f"Unknown Bedrock credential source: {credential_source}")
+        if credential_source == CONTAINER_ROLE_CREDENTIALS and aws_profile:
+            raise ValueError("Container-role credentials cannot be combined with an AWS profile")
+        if credential_source == PROFILE_CREDENTIALS and not aws_profile:
             raise ValueError("Bedrock requires an explicit AWS profile")
         if not aws_region:
             raise ValueError("Bedrock requires an explicit AWS region")
-        session = session_factory(profile_name=aws_profile, region_name=aws_region)
+        if credential_source == CONTAINER_ROLE_CREDENTIALS:
+            session = session_factory(region_name=aws_region)
+        else:
+            session = session_factory(profile_name=aws_profile, region_name=aws_region)
         return bedrock_model_factory(
             boto_session=session,
             model_id=model_id,

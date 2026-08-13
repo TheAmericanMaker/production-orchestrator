@@ -14,7 +14,13 @@ from strands.session import FileSessionManager
 
 from production_orchestrator.fixtures import SCENARIOS
 from production_orchestrator.persistence import SQLiteShopRepository
-from production_orchestrator.spike import build_model, utc_now
+from production_orchestrator.spike import (
+    CONTAINER_ROLE_CREDENTIALS,
+    CREDENTIAL_SOURCES,
+    PROFILE_CREDENTIALS,
+    build_model,
+    utc_now,
+)
 from production_orchestrator.workflow import (
     ProductionPlanApprovalHook,
     ShopService,
@@ -82,18 +88,34 @@ def _provider_configuration(
     model_id: str,
     aws_profile: str | None,
     aws_region: str | None,
+    credential_source: str = PROFILE_CREDENTIALS,
 ) -> dict[str, str | None]:
     """The provider identity persisted at start and re-trusted at resume.
 
     start(), resume(), and agent_id_for() must all derive AWS fields from
     this one function so the checkpoint contract cannot drift by provider.
+
+    `credential_source` records which credential chain a run is entitled to
+    use — a named developer profile, or the task role a container receives on
+    AgentCore Runtime. Swapping it changes the identity the agent acts as, so
+    resume compares it like every other field.
     """
+    is_aws = provider in _AWS_PROVIDERS
     return {
         "provider": provider,
         "model_id": model_id,
-        "aws_profile": aws_profile if provider in _AWS_PROVIDERS else None,
-        "aws_region": aws_region if provider in _AWS_PROVIDERS else None,
+        "aws_profile": aws_profile if is_aws else None,
+        "aws_region": aws_region if is_aws else None,
+        "credential_source": credential_source if is_aws else PROFILE_CREDENTIALS,
     }
+
+
+# Agent IDs address persisted Strands sessions, so the fields hashed into them
+# are frozen: adding a configuration field must never change an existing ID, or
+# checkpoints written by earlier versions would stop resuming. New fields still
+# belong in _provider_configuration — they are compared at resume, just not
+# hashed here. Guarded by test_agent_id_is_stable_for_the_historical_configuration_fields.
+_AGENT_ID_CONFIGURATION_FIELDS = ("provider", "model_id", "aws_profile", "aws_region")
 
 
 def agent_id_for(
@@ -105,14 +127,15 @@ def agent_id_for(
     aws_region: str | None,
     scenario: str | None = None,
 ) -> str:
+    persisted = _provider_configuration(
+        provider=provider,
+        model_id=model_id,
+        aws_profile=aws_profile,
+        aws_region=aws_region,
+    )
     configuration = json.dumps(
         {
-            **_provider_configuration(
-                provider=provider,
-                model_id=model_id,
-                aws_profile=aws_profile,
-                aws_region=aws_region,
-            ),
+            **{field: persisted[field] for field in _AGENT_ID_CONFIGURATION_FIELDS},
             "proposal_hash": None if provider in _WORKFLOW_PROVIDERS else proposal_hash,
             "scenario": scenario,
         },
@@ -322,6 +345,7 @@ def _configured_model(
     aws_profile: str | None,
     aws_region: str | None,
     scenario: str | None = None,
+    credential_source: str = PROFILE_CREDENTIALS,
 ) -> Any:
     if provider == "deterministic":
         if model_id != "deterministic-apply-model":
@@ -346,6 +370,7 @@ def _configured_model(
             host=None,
             aws_profile=aws_profile,
             aws_region=aws_region,
+            credential_source=credential_source,
         )
     raise ValueError(f"Unsupported restart provider: {provider}")
 
@@ -362,6 +387,7 @@ def _build_agent(
     agent_id: str,
     target_order_id: str | None = None,
     scenario: str | None = None,
+    credential_source: str = PROFILE_CREDENTIALS,
 ) -> Agent:
     return Agent(
         model=_configured_model(
@@ -372,6 +398,7 @@ def _build_agent(
             aws_profile=aws_profile,
             aws_region=aws_region,
             scenario=scenario,
+            credential_source=credential_source,
         ),
         tools=build_strands_tools(service),
         hooks=[ProductionPlanApprovalHook(service, actor="restart-spike-operator")],
@@ -400,6 +427,7 @@ def start(
     aws_profile: str | None,
     aws_region: str | None,
     scenario: str = "rush-order",
+    credential_source: str = PROFILE_CREDENTIALS,
 ) -> dict[str, object]:
     spec = SCENARIOS[scenario]
     target_order_id = spec.target_order_id
@@ -439,6 +467,7 @@ def start(
         agent_id=agent_id,
         target_order_id=target_order_id,
         scenario=scenario,
+        credential_source=credential_source,
     )
 
     result = agent(prompt)
@@ -490,6 +519,7 @@ def start(
             model_id=model_id,
             aws_profile=aws_profile,
             aws_region=aws_region,
+            credential_source=credential_source,
         ),
     }
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
@@ -501,6 +531,9 @@ def start(
 
 def _load_checkpoint(path: Path) -> dict[str, object]:
     data = json.loads(path.read_text())
+    # Checkpoints written before credential_source existed name the only source
+    # available then: a developer profile. Defaulting keeps them resumable.
+    data.setdefault("credential_source", PROFILE_CREDENTIALS)
     required = {
         "agent_id",
         "first_stop_reason",
@@ -517,6 +550,7 @@ def _load_checkpoint(path: Path) -> dict[str, object]:
         "model_id",
         "aws_profile",
         "aws_region",
+        "credential_source",
     }
     if set(data) != required:
         raise ValueError("Checkpoint fields are malformed")
@@ -542,13 +576,18 @@ def _load_checkpoint(path: Path) -> dict[str, object]:
         raise ValueError("Checkpoint scenario is invalid")
     if data["target_order_id"] != SCENARIOS[str(data["scenario"])].target_order_id:
         raise ValueError("Checkpoint target order does not match its scenario")
-    if data["provider"] in _AWS_PROVIDERS and (
-        not isinstance(data["aws_profile"], str)
-        or not data["aws_profile"]
-        or not isinstance(data["aws_region"], str)
-        or not data["aws_region"]
-    ):
-        raise ValueError("Checkpoint Bedrock configuration is incomplete")
+    if data["credential_source"] not in CREDENTIAL_SOURCES:
+        raise ValueError("Checkpoint credential source is invalid")
+    if data["provider"] in _AWS_PROVIDERS:
+        if not isinstance(data["aws_region"], str) or not data["aws_region"]:
+            raise ValueError("Checkpoint Bedrock configuration is incomplete")
+        if data["credential_source"] == CONTAINER_ROLE_CREDENTIALS:
+            if data["aws_profile"] is not None:
+                raise ValueError("Checkpoint Bedrock configuration is incomplete")
+        elif not isinstance(data["aws_profile"], str) or not data["aws_profile"]:
+            raise ValueError("Checkpoint Bedrock configuration is incomplete")
+    elif data["credential_source"] != PROFILE_CREDENTIALS:
+        raise ValueError("Checkpoint credential source is invalid")
     expected_agent_id = agent_id_for(
         provider=str(data["provider"]),
         model_id=str(data["model_id"]),
@@ -574,6 +613,7 @@ def resume(
     model_id: str,
     aws_profile: str | None,
     aws_region: str | None,
+    credential_source: str = PROFILE_CREDENTIALS,
 ) -> dict[str, object]:
     checkpoint = _load_checkpoint(checkpoint_path)
     trusted_configuration = _provider_configuration(
@@ -581,6 +621,7 @@ def resume(
         model_id=model_id,
         aws_profile=aws_profile,
         aws_region=aws_region,
+        credential_source=credential_source,
     )
     persisted_configuration = {key: checkpoint[key] for key in trusted_configuration}
     if persisted_configuration != trusted_configuration:
@@ -621,6 +662,7 @@ def resume(
         agent_id=agent_id,
         target_order_id=str(checkpoint["target_order_id"]),
         scenario=str(checkpoint["scenario"]),
+        credential_source=credential_source,
     )
 
     interrupt_id = str(checkpoint["interrupt_id"])
@@ -707,6 +749,15 @@ def main() -> None:
     start_parser.add_argument("--scenario", choices=sorted(SCENARIOS), default="rush-order")
     start_parser.add_argument("--aws-profile")
     start_parser.add_argument("--aws-region")
+    start_parser.add_argument(
+        "--aws-credential-source",
+        choices=sorted(CREDENTIAL_SOURCES),
+        default=PROFILE_CREDENTIALS,
+        help=(
+            "Where Bedrock credentials come from: a named developer profile, or the "
+            "task role a container receives on AgentCore Runtime."
+        ),
+    )
     resume_parser = subparsers.add_parser("resume")
     resume_parser.add_argument("--runtime-dir", type=Path, required=True)
     resume_parser.add_argument("--checkpoint", type=Path, required=True)
@@ -720,6 +771,12 @@ def main() -> None:
     resume_parser.add_argument("--model", default="deterministic-apply-model")
     resume_parser.add_argument("--aws-profile")
     resume_parser.add_argument("--aws-region")
+    resume_parser.add_argument(
+        "--aws-credential-source",
+        choices=sorted(CREDENTIAL_SOURCES),
+        default=PROFILE_CREDENTIALS,
+        help="Must match the credential source recorded in the checkpoint.",
+    )
     args = parser.parse_args()
     if args.phase == "start":
         start(
@@ -730,6 +787,7 @@ def main() -> None:
             aws_profile=args.aws_profile,
             aws_region=args.aws_region,
             scenario=args.scenario,
+            credential_source=args.aws_credential_source,
         )
     else:
         resume(
@@ -741,6 +799,7 @@ def main() -> None:
             model_id=args.model,
             aws_profile=args.aws_profile,
             aws_region=args.aws_region,
+            credential_source=args.aws_credential_source,
         )
 
 

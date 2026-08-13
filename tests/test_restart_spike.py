@@ -460,6 +460,184 @@ def test_provider_configuration_contract_is_shared_across_providers() -> None:
         assert config["aws_region"] == ("region" if expects_aws else None)
 
 
+def test_provider_configuration_carries_the_credential_source() -> None:
+    """AgentCore Runtime has no named profile, so the credential source is part
+    of the persisted contract and is re-verified at resume."""
+
+    profile_config = restart_spike._provider_configuration(
+        provider="bedrock-workflow",
+        model_id="model",
+        aws_profile="profile",
+        aws_region="region",
+    )
+    role_config = restart_spike._provider_configuration(
+        provider="bedrock-workflow",
+        model_id="model",
+        aws_profile=None,
+        aws_region="region",
+        credential_source="container-role",
+    )
+
+    assert profile_config["credential_source"] == "profile"
+    assert role_config["credential_source"] == "container-role"
+    assert role_config["aws_profile"] is None
+    assert role_config["aws_region"] == "region"
+    non_aws = restart_spike._provider_configuration(
+        provider="deterministic-workflow",
+        model_id="model",
+        aws_profile="profile",
+        aws_region="region",
+        credential_source="container-role",
+    )
+    assert non_aws["credential_source"] == "profile"
+
+
+def test_agent_id_is_stable_for_the_historical_configuration_fields() -> None:
+    """Agent IDs address persisted sessions, so adding a configuration field
+    must never silently change them — an existing checkpoint would stop
+    resuming. These values were computed before credential_source existed."""
+
+    assert (
+        restart_spike.agent_id_for(
+            provider="bedrock-workflow",
+            model_id="amazon.nova-lite-v1:0",
+            proposal_hash="6ef62d9f",
+            aws_profile="production-orchestrator-bedrock",
+            aws_region="us-east-1",
+            scenario="rush-order",
+        )
+        == "production-orchestrator-49cd82a7db381a89"
+    )
+    assert (
+        restart_spike.agent_id_for(
+            provider="deterministic-workflow",
+            model_id="deterministic-workflow-model",
+            proposal_hash=None,
+            aws_profile=None,
+            aws_region=None,
+            scenario="rush-order",
+        )
+        == "production-orchestrator-d7f0959601b7f31e"
+    )
+
+
+def test_checkpoint_without_credential_source_defaults_to_profile(tmp_path: Path) -> None:
+    """Checkpoints written before this field existed must still resume."""
+
+    runtime_dir = tmp_path / "legacy-checkpoint"
+    checkpoint_path = runtime_dir / "checkpoint.json"
+    _run_phase(
+        "start",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--provider",
+        "deterministic-workflow",
+        "--model",
+        "deterministic-workflow-model",
+        "--scenario",
+        "rush-order",
+    )
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint.pop("credential_source", None)
+    checkpoint_path.write_text(json.dumps(checkpoint))
+
+    loaded = restart_spike._load_checkpoint(checkpoint_path)
+
+    assert loaded["credential_source"] == "profile"
+
+
+def test_non_aws_checkpoint_cannot_claim_container_role_credentials(tmp_path: Path) -> None:
+    """A provider that never touches AWS has no business naming a role."""
+
+    runtime_dir = tmp_path / "non-aws-credential-source"
+    checkpoint_path = runtime_dir / "checkpoint.json"
+    _run_phase(
+        "start",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--provider",
+        "deterministic-workflow",
+        "--model",
+        "deterministic-workflow-model",
+        "--scenario",
+        "rush-order",
+    )
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint["credential_source"] = "container-role"
+    checkpoint_path.write_text(json.dumps(checkpoint))
+
+    with pytest.raises(ValueError, match="credential source"):
+        restart_spike._load_checkpoint(checkpoint_path)
+
+
+def test_resume_refuses_a_swapped_credential_source(tmp_path: Path) -> None:
+    """A checkpoint entitled to container-role credentials must not be resumed
+    with profile credentials, or a run could act as an unintended identity."""
+
+    runtime_dir = tmp_path / "swapped-credential-source"
+    checkpoint_path = runtime_dir / "checkpoint.json"
+    _run_phase(
+        "start",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--provider",
+        "deterministic-workflow",
+        "--model",
+        "deterministic-workflow-model",
+        "--scenario",
+        "rush-order",
+    )
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint.update(
+        provider="bedrock-workflow",
+        model_id="amazon.nova-lite-v1:0",
+        aws_profile=None,
+        aws_region="us-east-1",
+        credential_source="container-role",
+    )
+    checkpoint["agent_id"] = restart_spike.agent_id_for(
+        provider="bedrock-workflow",
+        model_id="amazon.nova-lite-v1:0",
+        proposal_hash=str(checkpoint["proposal_hash"]),
+        aws_profile=None,
+        aws_region="us-east-1",
+        scenario=str(checkpoint["scenario"]),
+    )
+    checkpoint_path.write_text(json.dumps(checkpoint))
+
+    report_path = runtime_dir / "report.json"
+    result = _run_phase(
+        "resume",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--decision",
+        "reject",
+        "--report",
+        str(report_path),
+        "--provider",
+        "bedrock-workflow",
+        "--model",
+        "amazon.nova-lite-v1:0",
+        "--aws-profile",
+        "regression-test-profile",
+        "--aws-region",
+        "us-east-1",
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "trusted provider configuration" in result.stderr.lower()
+    assert not report_path.exists()
+
+
 def test_bedrock_workflow_resume_accepts_its_own_checkpoint_configuration(
     tmp_path: Path,
 ) -> None:
