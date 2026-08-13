@@ -1,0 +1,31 @@
+{
+  "audit_event_types": [
+    "scenario_initialized",
+    "request_intake",
+    "active_orders_read",
+    "inventory_read",
+    "machine_capacity_read",
+    "blockers_analyzed",
+    "proposal_created",
+    "communications_drafted",
+    "approval_rejected"
+  ],
+  "aws_region": null,
+  "decision": "reject",
+  "final_domain_digest": "4791cc3e80eeb16864f3b5359420bc570284cd1e59d8c6c3d703e0a298365bfa",
+  "final_state_revision": 1,
+  "final_stop_reason": "end_turn",
+  "interrupt_id": "v1:before_tool_call:tooluse_1ae9123c6446413fa91374e8:0e47f884-de38-5d20-88d9-b87e87ad695f",
+  "model_id": "gemma4:e4b",
+  "official_interrupt_response_used": true,
+  "ollama_host": "http://localhost:11434",
+  "plan_applied_count": 0,
+  "process_boundary_proven": true,
+  "proposal_hash": "6ef62d9fdaf1bb07f35b6d95385a0991035a894988afa7a7fdf17711d449d7dc",
+  "provider": "ollama-workflow",
+  "resume_process_id": 538671,
+  "scenario": "rush-order",
+  "session_interrupt_restored": true,
+  "start_process_id": 538311,
+  "workflow_passed": true
+}

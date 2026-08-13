@@ -1,0 +1,97 @@
+{
+  "captured_at": "2026-08-13T17:48:33-04:00",
+  "environment": {
+    "cpu": "AMD Ryzen 7 5800X 8-Core Processor",
+    "logical_cpus": 16,
+    "memory_gib": 31,
+    "gpu": "NVIDIA GeForce RTX 3060",
+    "gpu_memory_mib": 12288,
+    "nvidia_driver": "610.57.04",
+    "ollama_version": "0.32.9",
+    "ollama_host": "http://localhost:11434"
+  },
+  "model": {
+    "id": "gemma4:e4b",
+    "ollama_content_id": "c6eb396dbd59",
+    "architecture": "gemma4",
+    "parameters": "8.0B",
+    "quantization": "Q4_K_M",
+    "disk_size_gb": 9.6,
+    "declared_context_length": 131072,
+    "observed_runtime_context": 4096,
+    "observed_processor": "100% GPU",
+    "capabilities": [
+      "completion",
+      "vision",
+      "audio",
+      "tools",
+      "thinking"
+    ],
+    "request_temperature": 0
+  },
+  "methodology": {
+    "scenario": "rush-order",
+    "provider": "ollama-workflow",
+    "assistant_turns_per_run": 9,
+    "tool_calls_per_run": 8,
+    "tool_sequence": [
+      "intake_customer_request",
+      "list_active_orders",
+      "get_inventory",
+      "get_machine_capacity",
+      "analyze_shop_blockers",
+      "propose_schedule",
+      "draft_communications",
+      "apply_production_plan"
+    ],
+    "latency_definition": "Sum of latencyMs reported by Strands/Ollama for all nine assistant turns, including the post-resume final turn; excludes tool execution and operator delay between processes.",
+    "session_span_definition": "Elapsed time between the first and last persisted session-message timestamps; includes tool execution and the manual process handoff.",
+    "throughput_definition": "Total output tokens divided by accumulated provider-reported latency; this is an effective end-to-end model-turn rate, not raw decode throughput.",
+    "benchmark_limitations": "Two development runs, not a controlled benchmark. The first included cold model loading; the second reused the resident model. Decisions and generated token counts differ slightly."
+  },
+  "runs": [
+    {
+      "name": "cold-start rejection",
+      "decision": "reject",
+      "report": "ollama-workflow-rejection.json",
+      "report_sha256": "014292e303b73da8c8a17c5d9c5d28f3af72253c38f6bf790a180c31a628c2eb",
+      "workflow_passed": true,
+      "final_state_revision": 1,
+      "plan_applied_count": 0,
+      "message_count": 18,
+      "assistant_turns": 9,
+      "input_tokens": 14925,
+      "output_tokens": 1948,
+      "total_tokens": 16873,
+      "provider_reported_latency_ms": 93235,
+      "first_turn_latency_ms": 69621,
+      "remaining_turns_latency_ms": 23614,
+      "effective_output_tokens_per_second": 20.9,
+      "recorded_cross_process_session_span_seconds": 102.624
+    },
+    {
+      "name": "warm-model approval",
+      "decision": "approve",
+      "report": "ollama-workflow-approval.json",
+      "report_sha256": "43daf4621a02ef29eafc80933a29407e7aa969ef30cef53c272c28f10a3b45e2",
+      "workflow_passed": true,
+      "final_state_revision": 2,
+      "plan_applied_count": 1,
+      "message_count": 18,
+      "assistant_turns": 9,
+      "input_tokens": 14997,
+      "output_tokens": 1840,
+      "total_tokens": 16837,
+      "provider_reported_latency_ms": 31977,
+      "first_turn_latency_ms": 6853,
+      "remaining_turns_latency_ms": 25124,
+      "effective_output_tokens_per_second": 57.5,
+      "recorded_cross_process_session_span_seconds": 37.786
+    }
+  ],
+  "comparison": {
+    "warm_model_latency_reduction_percent": 65.7,
+    "cold_to_warm_latency_ratio": 2.92,
+    "proposal_hash_shared_by_both_runs": "6ef62d9fdaf1bb07f35b6d95385a0991035a894988afa7a7fdf17711d449d7dc"
+  }
+}

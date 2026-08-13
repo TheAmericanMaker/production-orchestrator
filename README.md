@@ -56,12 +56,13 @@ See [`DEVELOPMENT_CONTRACT.md`](DEVELOPMENT_CONTRACT.md) for the non-negotiable 
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system and cross-process approval diagrams, and the table mapping every guarantee to the test or committed evidence that proves it
 - [`docs/VIDEO_SCRIPT.md`](docs/VIDEO_SCRIPT.md) — shot-by-shot submission video script, including verified commands for the fail-closed capture
+- [`evidence/OLLAMA_WORKFLOW_RUNS.md`](evidence/OLLAMA_WORKFLOW_RUNS.md) — live local-model rejection/approval results, hardware, token counts, latency, and measurement caveats
 
 ## Current verdict
 
 The deterministic core and real Strands interrupt loop are operational. All seven Strands tools were observed in independent rejection and approval runs, `FileSessionManager` persisted each session, and all eight machine-evaluated workflow checks passed through Amazon Bedrock.
 
-The judged-provider feasibility gate is validated with `amazon.nova-lite-v1:0` in `us-east-1`. Rejection preserved revision 1 with no `plan_applied` event; exact approval advanced atomically to revision 2, and the sole applied hash matched the proposal reviewed at the interrupt. The original Ollama reports remain as fallback-development evidence, not judged-provider proof.
+The judged-provider feasibility gate is validated with `amazon.nova-lite-v1:0` in `us-east-1`. Rejection preserved revision 1 with no `plan_applied` event; exact approval advanced atomically to revision 2, and the sole applied hash matched the proposal reviewed at the interrupt. Local Ollama development runs now also pass the complete eight-tool intake workflow and fresh-process rejection/approval paths with `gemma4:e4b`; they demonstrate provider independence but remain development evidence, not judged-provider proof.
 
 Immutable proposals are persisted in SQLite by canonical content hash. Fresh-process Bedrock rejection and exact-approval runs now also prove that a new Python interpreter can reconstruct the same Strands agent and `FileSessionManager` session, restore the pending interrupt, and submit the official `interruptResponse`. Rejection preserved revision 1; approval applied the exact persisted proposal once and advanced to revision 2. Wrong interrupt IDs, altered session/proposal/provider bindings, stale state, and replay fail closed.
 
@@ -157,13 +158,19 @@ The independently executed restart reports are [`evidence/bedrock-restart-reject
 
 ### Local-model workflow (no cloud account)
 
-The full intake workflow — customer email in, real model extraction, eight tools, interrupt, fresh-process resume — can also be driven by a local Ollama model. This exists to demonstrate that the governance layer is provider-independent: the interrupt, hash binding, checkpoint verification, and fail-closed resume are identical code for every provider. It needs no API key or cloud account, only a locally running Ollama with a tool-capable model:
+The full intake workflow — customer email in, real model extraction, eight tools, interrupt, fresh-process resume — can also be driven by a local Ollama model. This exists to demonstrate that the governance layer is provider-independent: the interrupt, hash binding, checkpoint verification, and fail-closed resume are identical code for every provider. It needs no API key or cloud account, only a locally running Ollama with a tool-capable model.
+
+The path was exercised live on August 13, 2026 with **`gemma4:e4b`**, an 8.0B-parameter Q4_K_M model running fully on an NVIDIA RTX 3060 12 GB through Ollama 0.32.9. Both runs invoked all eight tools in the required order and resumed a persisted interrupt in a new process. Rejection left revision 1 unchanged with zero applications; approval applied the exact same proposal hash once and advanced to revision 2. Both reported `WORKFLOW_PASSED=true`.
+
+Pull the tested model if it is not already installed, then run each decision with a fresh runtime directory:
 
 ```bash
+ollama pull gemma4:e4b
+
 uv run production-orchestrator-restart-spike start \
   --runtime-dir data/runtime/ollama-intake-reject \
   --checkpoint data/runtime/ollama-intake-reject/checkpoint.json \
-  --provider ollama-workflow --model qwen3:4b \
+  --provider ollama-workflow --model gemma4:e4b \
   --ollama-host http://localhost:11434 \
   --scenario rush-order
 
@@ -171,11 +178,20 @@ uv run production-orchestrator-restart-spike resume \
   --runtime-dir data/runtime/ollama-intake-reject \
   --checkpoint data/runtime/ollama-intake-reject/checkpoint.json \
   --decision reject --report evidence/ollama-intake-rejection-local.json \
-  --provider ollama-workflow --model qwen3:4b \
+  --provider ollama-workflow --model gemma4:e4b \
   --ollama-host http://localhost:11434
 ```
 
-The Ollama host is part of the checkpoint's trusted provider configuration: resuming against a different host fails closed, exactly like a swapped AWS profile. This path is **not** the judged provider — the contest evidence is the Bedrock runs above — and its wiring is verified by the offline test suite; treat any local report it produces as development evidence only.
+Observed performance for nine model turns (eight tool selections plus the post-resume final turn):
+
+| Run | Tokens (input / output) | Provider-reported model latency | First turn | Effective output rate | Outcome |
+|---|---:|---:|---:|---:|---|
+| Cold-start rejection | 14,925 / 1,948 | 93.235 s | 69.621 s | 20.9 tokens/s | Revision 1, 0 applied |
+| Warm-model approval | 14,997 / 1,840 | 31.977 s | 6.853 s | 57.5 tokens/s | Revision 2, 1 applied |
+
+The warm run's accumulated model latency was 65.7% lower (2.92× faster), primarily because the model was already resident. These are two development observations, not a controlled benchmark: the decisions and response lengths differ, and provider latency excludes tool execution and operator delay between processes. See [`evidence/OLLAMA_WORKFLOW_RUNS.md`](evidence/OLLAMA_WORKFLOW_RUNS.md) for the complete environment, methodology, tool sequence, correctness evidence, and limitations; the machine-readable reports are [`evidence/ollama-workflow-rejection.json`](evidence/ollama-workflow-rejection.json), [`evidence/ollama-workflow-approval.json`](evidence/ollama-workflow-approval.json), and [`evidence/ollama-workflow-performance.json`](evidence/ollama-workflow-performance.json).
+
+The Ollama host is part of the checkpoint's trusted provider configuration: resuming against a different host fails closed, exactly like a swapped AWS profile. This path is **not** the judged provider — the contest evidence is the Bedrock runs above — so treat the local reports as development evidence only.
 
 No AWS credentials, customer information, or runtime state belong in git.
 
