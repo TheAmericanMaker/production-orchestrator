@@ -155,6 +155,28 @@ uv run production-orchestrator-restart-spike resume \
 
 The independently executed restart reports are [`evidence/bedrock-restart-rejection.json`](evidence/bedrock-restart-rejection.json) and [`evidence/bedrock-restart-approval.json`](evidence/bedrock-restart-approval.json). They prove session reconstruction and approval safety across real process boundaries; the earlier paired reports remain the evidence for the complete seven-tool workflow.
 
+### Local-model workflow (no cloud account)
+
+The full intake workflow — customer email in, real model extraction, eight tools, interrupt, fresh-process resume — can also be driven by a local Ollama model. This exists to demonstrate that the governance layer is provider-independent: the interrupt, hash binding, checkpoint verification, and fail-closed resume are identical code for every provider. It needs no API key or cloud account, only a locally running Ollama with a tool-capable model:
+
+```bash
+uv run production-orchestrator-restart-spike start \
+  --runtime-dir data/runtime/ollama-intake-reject \
+  --checkpoint data/runtime/ollama-intake-reject/checkpoint.json \
+  --provider ollama-workflow --model qwen3:4b \
+  --ollama-host http://localhost:11434 \
+  --scenario rush-order
+
+uv run production-orchestrator-restart-spike resume \
+  --runtime-dir data/runtime/ollama-intake-reject \
+  --checkpoint data/runtime/ollama-intake-reject/checkpoint.json \
+  --decision reject --report evidence/ollama-intake-rejection-local.json \
+  --provider ollama-workflow --model qwen3:4b \
+  --ollama-host http://localhost:11434
+```
+
+The Ollama host is part of the checkpoint's trusted provider configuration: resuming against a different host fails closed, exactly like a swapped AWS profile. This path is **not** the judged provider — the contest evidence is the Bedrock runs above — and its wiring is verified by the offline test suite; treat any local report it produces as development evidence only.
+
 No AWS credentials, customer information, or runtime state belong in git.
 
 Because the repository will eventually become public, review the complete reachable Git history—not only the current tree—before changing visibility. Publication authorization and timing are tracked in [issue #2](https://github.com/TheAmericanMaker/production-orchestrator/issues/2) and the private Hackathon Arena strategy issue `TheAmericanMaker/hackathon-arena#2`.

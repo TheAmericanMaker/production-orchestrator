@@ -145,6 +145,7 @@ class DemoController:
             or checkpoint["model_id"] != WORKFLOW_MODEL_ID
             or checkpoint["aws_profile"] is not None
             or checkpoint["aws_region"] is not None
+            or checkpoint.get("ollama_host") is not None
             or checkpoint["scenario"] not in SCENARIOS
             or (
                 not report_path.is_file()

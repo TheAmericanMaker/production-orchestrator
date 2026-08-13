@@ -33,9 +33,14 @@ AGENT_ID_PREFIX = "production-orchestrator"
 WORKFLOW_PROVIDER = "deterministic-workflow"
 WORKFLOW_MODEL_ID = "deterministic-workflow-model"
 BEDROCK_WORKFLOW_PROVIDER = "bedrock-workflow"
+OLLAMA_WORKFLOW_PROVIDER = "ollama-workflow"
+DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 
-_WORKFLOW_PROVIDERS = frozenset({WORKFLOW_PROVIDER, BEDROCK_WORKFLOW_PROVIDER})
+_WORKFLOW_PROVIDERS = frozenset(
+    {WORKFLOW_PROVIDER, BEDROCK_WORKFLOW_PROVIDER, OLLAMA_WORKFLOW_PROVIDER}
+)
 _AWS_PROVIDERS = frozenset({"bedrock", BEDROCK_WORKFLOW_PROVIDER})
+_OLLAMA_PROVIDERS = frozenset({OLLAMA_WORKFLOW_PROVIDER})
 
 WORKFLOW_SYSTEM_PROMPT = """You are executing the Production Orchestrator workflow.
 Use tools for every factual claim. Do not calculate or invent shop facts yourself.
@@ -89,6 +94,7 @@ def _provider_configuration(
     aws_profile: str | None,
     aws_region: str | None,
     credential_source: str = PROFILE_CREDENTIALS,
+    ollama_host: str | None = None,
 ) -> dict[str, str | None]:
     """The provider identity persisted at start and re-trusted at resume.
 
@@ -107,6 +113,7 @@ def _provider_configuration(
         "aws_profile": aws_profile if is_aws else None,
         "aws_region": aws_region if is_aws else None,
         "credential_source": credential_source if is_aws else PROFILE_CREDENTIALS,
+        "ollama_host": ollama_host if provider in _OLLAMA_PROVIDERS else None,
     }
 
 
@@ -346,6 +353,7 @@ def _configured_model(
     aws_region: str | None,
     scenario: str | None = None,
     credential_source: str = PROFILE_CREDENTIALS,
+    ollama_host: str | None = None,
 ) -> Any:
     if provider == "deterministic":
         if model_id != "deterministic-apply-model":
@@ -362,6 +370,14 @@ def _configured_model(
             raise ValueError("Deterministic workflow requires a known scenario")
         return DeterministicWorkflowModel(
             target_order_id, extraction=SCENARIOS[scenario].expected_extraction
+        )
+    if provider in _OLLAMA_PROVIDERS:
+        return build_model(
+            provider="ollama",
+            model_id=model_id,
+            host=ollama_host,
+            aws_profile=None,
+            aws_region=None,
         )
     if provider in _AWS_PROVIDERS:
         return build_model(
@@ -388,6 +404,7 @@ def _build_agent(
     target_order_id: str | None = None,
     scenario: str | None = None,
     credential_source: str = PROFILE_CREDENTIALS,
+    ollama_host: str | None = None,
 ) -> Agent:
     return Agent(
         model=_configured_model(
@@ -399,6 +416,7 @@ def _build_agent(
             aws_region=aws_region,
             scenario=scenario,
             credential_source=credential_source,
+            ollama_host=ollama_host,
         ),
         tools=build_strands_tools(service),
         hooks=[ProductionPlanApprovalHook(service, actor="restart-spike-operator")],
@@ -428,6 +446,7 @@ def start(
     aws_region: str | None,
     scenario: str = "rush-order",
     credential_source: str = PROFILE_CREDENTIALS,
+    ollama_host: str | None = None,
 ) -> dict[str, object]:
     spec = SCENARIOS[scenario]
     target_order_id = spec.target_order_id
@@ -468,6 +487,7 @@ def start(
         target_order_id=target_order_id,
         scenario=scenario,
         credential_source=credential_source,
+        ollama_host=ollama_host,
     )
 
     result = agent(prompt)
@@ -520,6 +540,7 @@ def start(
             aws_profile=aws_profile,
             aws_region=aws_region,
             credential_source=credential_source,
+            ollama_host=ollama_host,
         ),
     }
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
@@ -534,6 +555,8 @@ def _load_checkpoint(path: Path) -> dict[str, object]:
     # Checkpoints written before credential_source existed name the only source
     # available then: a developer profile. Defaulting keeps them resumable.
     data.setdefault("credential_source", PROFILE_CREDENTIALS)
+    # Checkpoints written before the local-model provider existed carry no host.
+    data.setdefault("ollama_host", None)
     required = {
         "agent_id",
         "first_stop_reason",
@@ -551,6 +574,7 @@ def _load_checkpoint(path: Path) -> dict[str, object]:
         "aws_profile",
         "aws_region",
         "credential_source",
+        "ollama_host",
     }
     if set(data) != required:
         raise ValueError("Checkpoint fields are malformed")
@@ -568,6 +592,7 @@ def _load_checkpoint(path: Path) -> dict[str, object]:
         "bedrock",
         WORKFLOW_PROVIDER,
         BEDROCK_WORKFLOW_PROVIDER,
+        OLLAMA_WORKFLOW_PROVIDER,
     }:
         raise ValueError("Checkpoint provider is invalid")
     if not isinstance(data["model_id"], str) or not data["model_id"]:
@@ -588,6 +613,11 @@ def _load_checkpoint(path: Path) -> dict[str, object]:
             raise ValueError("Checkpoint Bedrock configuration is incomplete")
     elif data["credential_source"] != PROFILE_CREDENTIALS:
         raise ValueError("Checkpoint credential source is invalid")
+    if data["provider"] in _OLLAMA_PROVIDERS:
+        if not isinstance(data["ollama_host"], str) or not data["ollama_host"]:
+            raise ValueError("Checkpoint Ollama configuration is incomplete")
+    elif data["ollama_host"] is not None:
+        raise ValueError("Checkpoint Ollama configuration is invalid")
     expected_agent_id = agent_id_for(
         provider=str(data["provider"]),
         model_id=str(data["model_id"]),
@@ -614,6 +644,7 @@ def resume(
     aws_profile: str | None,
     aws_region: str | None,
     credential_source: str = PROFILE_CREDENTIALS,
+    ollama_host: str | None = None,
 ) -> dict[str, object]:
     checkpoint = _load_checkpoint(checkpoint_path)
     trusted_configuration = _provider_configuration(
@@ -622,6 +653,7 @@ def resume(
         aws_profile=aws_profile,
         aws_region=aws_region,
         credential_source=credential_source,
+        ollama_host=ollama_host,
     )
     persisted_configuration = {key: checkpoint[key] for key in trusted_configuration}
     if persisted_configuration != trusted_configuration:
@@ -663,6 +695,7 @@ def resume(
         target_order_id=str(checkpoint["target_order_id"]),
         scenario=str(checkpoint["scenario"]),
         credential_source=credential_source,
+        ollama_host=ollama_host,
     )
 
     interrupt_id = str(checkpoint["interrupt_id"])
@@ -717,6 +750,7 @@ def resume(
         "provider": provider,
         "model_id": model_id,
         "aws_region": aws_region,
+        "ollama_host": ollama_host if provider in _OLLAMA_PROVIDERS else None,
         "resume_process_id": os.getpid(),
         "session_interrupt_restored": True,
         "start_process_id": checkpoint["start_process_id"],
@@ -742,13 +776,24 @@ def main() -> None:
     start_parser.add_argument("--checkpoint", type=Path, required=True)
     start_parser.add_argument(
         "--provider",
-        choices=("deterministic", "bedrock", WORKFLOW_PROVIDER, BEDROCK_WORKFLOW_PROVIDER),
+        choices=(
+            "deterministic",
+            "bedrock",
+            WORKFLOW_PROVIDER,
+            BEDROCK_WORKFLOW_PROVIDER,
+            OLLAMA_WORKFLOW_PROVIDER,
+        ),
         default="deterministic",
     )
     start_parser.add_argument("--model", default="deterministic-apply-model")
     start_parser.add_argument("--scenario", choices=sorted(SCENARIOS), default="rush-order")
     start_parser.add_argument("--aws-profile")
     start_parser.add_argument("--aws-region")
+    start_parser.add_argument(
+        "--ollama-host",
+        default=DEFAULT_OLLAMA_HOST,
+        help="Ollama server for the ollama-workflow provider; ignored otherwise.",
+    )
     start_parser.add_argument(
         "--aws-credential-source",
         choices=sorted(CREDENTIAL_SOURCES),
@@ -765,12 +810,23 @@ def main() -> None:
     resume_parser.add_argument("--report", type=Path, required=True)
     resume_parser.add_argument(
         "--provider",
-        choices=("deterministic", "bedrock", WORKFLOW_PROVIDER, BEDROCK_WORKFLOW_PROVIDER),
+        choices=(
+            "deterministic",
+            "bedrock",
+            WORKFLOW_PROVIDER,
+            BEDROCK_WORKFLOW_PROVIDER,
+            OLLAMA_WORKFLOW_PROVIDER,
+        ),
         default="deterministic",
     )
     resume_parser.add_argument("--model", default="deterministic-apply-model")
     resume_parser.add_argument("--aws-profile")
     resume_parser.add_argument("--aws-region")
+    resume_parser.add_argument(
+        "--ollama-host",
+        default=DEFAULT_OLLAMA_HOST,
+        help="Must match the Ollama host recorded in the checkpoint; ignored otherwise.",
+    )
     resume_parser.add_argument(
         "--aws-credential-source",
         choices=sorted(CREDENTIAL_SOURCES),
@@ -788,6 +844,7 @@ def main() -> None:
             aws_region=args.aws_region,
             scenario=args.scenario,
             credential_source=args.aws_credential_source,
+            ollama_host=args.ollama_host,
         )
     else:
         resume(
@@ -800,6 +857,7 @@ def main() -> None:
             aws_profile=args.aws_profile,
             aws_region=args.aws_region,
             credential_source=args.aws_credential_source,
+            ollama_host=args.ollama_host,
         )
 
 
