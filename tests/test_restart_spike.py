@@ -440,3 +440,87 @@ def test_bedrock_workflow_provider_validates_configuration_offline(tmp_path: Pat
     checkpoint_path.write_text(json.dumps(checkpoint))
     with pytest.raises(ValueError, match="Bedrock configuration"):
         restart_spike._load_checkpoint(checkpoint_path)
+
+
+def test_provider_configuration_contract_is_shared_across_providers() -> None:
+    for provider, expects_aws in (
+        ("deterministic", False),
+        ("deterministic-workflow", False),
+        ("bedrock", True),
+        ("bedrock-workflow", True),
+    ):
+        config = restart_spike._provider_configuration(
+            provider=provider,
+            model_id="model",
+            aws_profile="profile",
+            aws_region="region",
+        )
+        assert config["provider"] == provider
+        assert config["aws_profile"] == ("profile" if expects_aws else None)
+        assert config["aws_region"] == ("region" if expects_aws else None)
+
+
+def test_bedrock_workflow_resume_accepts_its_own_checkpoint_configuration(
+    tmp_path: Path,
+) -> None:
+    """Regression for the PR #15 drift: resume's trusted configuration used a
+    literal == "bedrock" comparison while start persisted AWS fields for
+    bedrock-workflow too, so a genuine bedrock-workflow checkpoint could
+    never resume. The trusted-config gate must now pass; the run should fail
+    later, at real AWS credential resolution for the fake profile."""
+    runtime_dir = tmp_path / "bedrock-workflow-resume"
+    checkpoint_path = runtime_dir / "checkpoint.json"
+    _run_phase(
+        "start",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--provider",
+        "deterministic-workflow",
+        "--model",
+        "deterministic-workflow-model",
+        "--scenario",
+        "rush-order",
+    )
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint.update(
+        provider="bedrock-workflow",
+        model_id="amazon.nova-lite-v1:0",
+        aws_profile="regression-test-profile",
+        aws_region="us-east-1",
+    )
+    checkpoint["agent_id"] = restart_spike.agent_id_for(
+        provider="bedrock-workflow",
+        model_id="amazon.nova-lite-v1:0",
+        proposal_hash=str(checkpoint["proposal_hash"]),
+        aws_profile="regression-test-profile",
+        aws_region="us-east-1",
+        scenario=str(checkpoint["scenario"]),
+    )
+    checkpoint_path.write_text(json.dumps(checkpoint))
+
+    result = _run_phase(
+        "resume",
+        "--runtime-dir",
+        str(runtime_dir),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--decision",
+        "reject",
+        "--report",
+        str(runtime_dir / "report.json"),
+        "--provider",
+        "bedrock-workflow",
+        "--model",
+        "amazon.nova-lite-v1:0",
+        "--aws-profile",
+        "regression-test-profile",
+        "--aws-region",
+        "us-east-1",
+        check=False,
+    )
+
+    assert result.returncode != 0  # fake profile cannot reach AWS
+    assert "trusted provider configuration" not in result.stderr.lower()
+    assert "regression-test-profile" in result.stderr
