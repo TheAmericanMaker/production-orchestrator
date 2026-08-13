@@ -18,6 +18,7 @@ from production_orchestrator.restart_spike import WORKFLOW_MODEL_ID, WORKFLOW_PR
 
 PENDING_EVENTS = [
     "scenario_initialized",
+    "request_intake",
     "active_orders_read",
     "inventory_read",
     "machine_capacity_read",
@@ -75,6 +76,7 @@ def test_controller_runs_full_workflow_before_interrupt_after_processes(
     assert pending["phase"] == "pending"
     assert pending["scenario"]["name"] == "rush-order"
     assert pending["scenario"]["target_order_id"] == "RUSH-200"
+    assert "embroidered caps" in pending["scenario"]["customer_email"]
     assert pending["state"]["revision"] == 1
     assert pending["proposal"]["base_revision"] == 1
     assert pending["proposal"]["content_hash"] == pending["checkpoint"]["proposal_hash"]

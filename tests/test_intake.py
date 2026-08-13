@@ -144,3 +144,82 @@ def test_derivation_is_deterministic_and_whole_hours() -> None:
     assert first == second
     assert isinstance(first.duration_hours, int)
     assert first.duration_hours >= 1
+
+
+def test_initial_state_excludes_the_target_order_until_intake() -> None:
+    for spec in SCENARIOS.values():
+        initial = spec.build_initial()
+        full = spec.build()
+
+        assert spec.target_order_id not in initial.orders
+        assert spec.target_order_id in full.orders
+        assert set(initial.orders) == set(full.orders) - {spec.target_order_id}
+        assert initial.schedule == full.schedule
+        assert initial.revision == full.revision == 1
+
+
+def test_persistence_add_order_is_atomic_and_audited(tmp_path) -> None:
+    from production_orchestrator.persistence import SQLiteShopRepository
+
+    spec = _spec("rush-order")
+    repository = SQLiteShopRepository(tmp_path / "shop.db", clock=lambda: "2026-08-12T00:00:00Z")
+    repository.initialize(spec.build_initial())
+    target = spec.build().orders[spec.target_order_id]
+
+    repository.add_order(target)
+
+    state = repository.load_state()
+    assert state.revision == 1
+    assert state.orders[spec.target_order_id] == target
+    events = repository.audit_events()
+    intake_events = [event for event in events if event.event_type == "request_intake"]
+    assert len(intake_events) == 1
+    assert intake_events[0].details["order_id"] == spec.target_order_id
+    assert intake_events[0].details["domain_digest_after"] == repository.domain_digest()
+
+    with pytest.raises(ValueError, match="exists"):
+        repository.add_order(target)
+
+
+def test_service_intake_tool_validates_and_creates_the_order(tmp_path) -> None:
+    from dataclasses import asdict
+
+    from production_orchestrator.persistence import SQLiteShopRepository
+    from production_orchestrator.workflow import ShopService, build_strands_tools
+
+    spec = _spec("rush-order")
+    repository = SQLiteShopRepository(tmp_path / "shop.db", clock=lambda: "2026-08-12T00:00:00Z")
+    repository.initialize(spec.build_initial())
+    service = ShopService(repository, catalog=spec.catalog)
+
+    result = service.intake_customer_request(**asdict(spec.expected_extraction))
+
+    assert result["order_id"] == spec.target_order_id
+    state = repository.load_state()
+    assert state.orders[spec.target_order_id] == spec.build().orders[spec.target_order_id]
+
+    with pytest.raises(IntakeValidationError, match="product"):
+        service.intake_customer_request(
+            order_id="RUSH-201",
+            product_code="unknown-product",
+            quantity=5,
+            requested_day="2026-08-12",
+            priority=50,
+        )
+    assert "RUSH-201" not in repository.load_state().orders
+
+    tool_names = {tool.tool_name for tool in build_strands_tools(service)}
+    assert "intake_customer_request" in tool_names
+
+
+def test_service_without_catalog_offers_no_intake_tool(tmp_path) -> None:
+    from production_orchestrator.persistence import SQLiteShopRepository
+    from production_orchestrator.workflow import ShopService, build_strands_tools
+
+    spec = _spec("rush-order")
+    repository = SQLiteShopRepository(tmp_path / "shop.db", clock=lambda: "2026-08-12T00:00:00Z")
+    repository.initialize(spec.build())
+    service = ShopService(repository)
+
+    tool_names = {tool.tool_name for tool in build_strands_tools(service)}
+    assert "intake_customer_request" not in tool_names

@@ -120,6 +120,42 @@ class SQLiteShopRepository:
             raise RuntimeError("Shop state is not initialized")
         return hashlib.sha256(row["payload"].encode("utf-8")).hexdigest()
 
+    def add_order(self, order: Order) -> None:
+        """Insert a validated intake order and its audit event atomically.
+
+        Intake is the one sanctioned pre-proposal mutation: it only adds a new
+        order to the queue. Revision is unchanged; consequential mutations
+        (schedule, procurement) remain approval-gated.
+        """
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT payload FROM shop_state WHERE singleton = 1"
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Shop state is not initialized")
+            state = _decode_state(row["payload"])
+            if order.order_id in state.orders:
+                raise ValueError(f"Order {order.order_id} already exists")
+            new_state = replace(state, orders={**state.orders, order.order_id: order})
+            payload = _encode_state(new_state)
+            connection.execute(
+                "UPDATE shop_state SET payload = ? WHERE singleton = 1",
+                (payload,),
+            )
+            self._append_audit(
+                connection,
+                event_type="request_intake",
+                proposal_hash=None,
+                details={
+                    "order_id": order.order_id,
+                    "requested_day": order.requested_day,
+                    "duration_hours": order.duration_hours,
+                    "materials": dict(order.materials),
+                    "priority": order.priority,
+                    "domain_digest_after": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+                },
+            )
+
     def record_decision(
         self,
         *,

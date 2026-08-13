@@ -130,6 +130,7 @@ def test_full_workflow_provider_runs_seven_tools_and_resumes(
     assert result["plan_applied_count"] == expected_applied
     expected_prefix = [
         "scenario_initialized",
+        "request_intake",
         "active_orders_read",
         "inventory_read",
         "machine_capacity_read",
@@ -237,6 +238,7 @@ def test_workflow_provider_rejects_forged_proposal_before_mutation(
     assert repository.load_state().revision == 1
     assert [event.event_type for event in repository.audit_events()] == [
         "scenario_initialized",
+        "request_intake",
         "active_orders_read",
         "inventory_read",
         "machine_capacity_read",

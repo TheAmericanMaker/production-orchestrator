@@ -1,5 +1,5 @@
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from production_orchestrator.intake import CatalogItem, RequestExtraction
 from production_orchestrator.models import Machine, Order, ScheduleEntry, ShopState
@@ -164,6 +164,16 @@ class ScenarioSpec:
     customer_email: str = ""
     catalog: Mapping[str, CatalogItem] = field(default_factory=dict)
     expected_extraction: RequestExtraction | None = None
+
+    def build_initial(self) -> ShopState:
+        """The shop before the customer request arrives: no target order yet."""
+        state = self.build()
+        orders = {
+            order_id: order
+            for order_id, order in state.orders.items()
+            if order_id != self.target_order_id
+        }
+        return replace(state, orders=orders)
 
 
 SCENARIOS: dict[str, ScenarioSpec] = {

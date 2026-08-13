@@ -198,6 +198,17 @@ button { font: inherit; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Customer email */
+.email-paper {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-left: 3px solid var(--accent);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 16px 18px;
+}
+.email-subject { font-weight: 600; margin-bottom: 8px; }
+.email-body { margin: 0; color: var(--sub); line-height: 1.6; white-space: pre-line; font-size: 14px; }
+
 /* Agent activity feed */
 .feed { list-style: none; margin: 0; padding: 0; display: grid; }
 .feed li {
