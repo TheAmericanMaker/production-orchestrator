@@ -5,7 +5,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Sequence
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
@@ -22,7 +22,7 @@ from production_orchestrator.restart_spike import (
     WORKFLOW_PROVIDER,
     _load_checkpoint,
 )
-from production_orchestrator.spike import utc_now
+from production_orchestrator.spike import PROFILE_CREDENTIALS, utc_now
 
 _SCENARIO_ID = re.compile(r"[0-9a-f]{32}")
 _MAX_REQUEST_BYTES = 4_096
@@ -70,6 +70,30 @@ def demo_meta() -> dict[str, object]:
     }
 
 
+@dataclass(frozen=True)
+class ProviderConfiguration:
+    """Which model backend a controller drives the workflow with.
+
+    The judge-facing web demo uses the deterministic workflow model so it
+    needs no credentials; the AgentCore adapter passes the judged Bedrock
+    provider with container-role credentials. Everything else — the phase
+    subprocesses, the verification, the audit expectations — is shared.
+    """
+
+    provider: str = WORKFLOW_PROVIDER
+    model_id: str = WORKFLOW_MODEL_ID
+    aws_region: str | None = None
+    credential_source: str = PROFILE_CREDENTIALS
+
+    def phase_arguments(self) -> tuple[str, ...]:
+        arguments = ["--provider", self.provider, "--model", self.model_id]
+        if self.aws_region:
+            arguments += ["--aws-region", self.aws_region]
+        if self.credential_source != PROFILE_CREDENTIALS:
+            arguments += ["--aws-credential-source", self.credential_source]
+        return tuple(arguments)
+
+
 class ReportVerificationError(RuntimeError):
     """Persisted completion evidence does not prove a valid outcome."""
 
@@ -77,9 +101,10 @@ class ReportVerificationError(RuntimeError):
 class DemoController:
     """Run the validated restart proof and expose judge-readable state."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, configuration: ProviderConfiguration | None = None) -> None:
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
+        self.configuration = configuration or ProviderConfiguration()
 
     def _scenario_dir(self, scenario_id: str) -> Path:
         if _SCENARIO_ID.fullmatch(scenario_id) is None:
@@ -115,10 +140,7 @@ class DemoController:
             str(runtime_dir),
             "--checkpoint",
             str(checkpoint_path),
-            "--provider",
-            WORKFLOW_PROVIDER,
-            "--model",
-            WORKFLOW_MODEL_ID,
+            *self.configuration.phase_arguments(),
             "--scenario",
             scenario,
         )
@@ -141,10 +163,10 @@ class DemoController:
         report_path = scenario_dir / "report.json"
         event_types = [event.event_type for event in audit]
         if (
-            checkpoint["provider"] != WORKFLOW_PROVIDER
-            or checkpoint["model_id"] != WORKFLOW_MODEL_ID
+            checkpoint["provider"] != self.configuration.provider
+            or checkpoint["model_id"] != self.configuration.model_id
             or checkpoint["aws_profile"] is not None
-            or checkpoint["aws_region"] is not None
+            or checkpoint["aws_region"] != self.configuration.aws_region
             or checkpoint.get("ollama_host") is not None
             or checkpoint["scenario"] not in SCENARIOS
             or (
@@ -266,10 +288,7 @@ class DemoController:
             decision,
             "--report",
             str(report_path),
-            "--provider",
-            WORKFLOW_PROVIDER,
-            "--model",
-            WORKFLOW_MODEL_ID,
+            *self.configuration.phase_arguments(),
         )
         return self.get_scenario(scenario_id)
 
