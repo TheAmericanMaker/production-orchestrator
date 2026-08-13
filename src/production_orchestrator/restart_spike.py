@@ -26,6 +26,10 @@ AGENT_ID_PREFIX = "production-orchestrator"
 
 WORKFLOW_PROVIDER = "deterministic-workflow"
 WORKFLOW_MODEL_ID = "deterministic-workflow-model"
+BEDROCK_WORKFLOW_PROVIDER = "bedrock-workflow"
+
+_WORKFLOW_PROVIDERS = frozenset({WORKFLOW_PROVIDER, BEDROCK_WORKFLOW_PROVIDER})
+_AWS_PROVIDERS = frozenset({"bedrock", BEDROCK_WORKFLOW_PROVIDER})
 
 WORKFLOW_SYSTEM_PROMPT = """You are executing the Production Orchestrator workflow.
 Use tools for every factual claim. Do not calculate or invent shop facts yourself.
@@ -85,10 +89,10 @@ def agent_id_for(
         {
             "provider": provider,
             "model_id": model_id,
-            "proposal_hash": None if provider == WORKFLOW_PROVIDER else proposal_hash,
+            "proposal_hash": None if provider in _WORKFLOW_PROVIDERS else proposal_hash,
             "scenario": scenario,
-            "aws_profile": aws_profile if provider == "bedrock" else None,
-            "aws_region": aws_region if provider == "bedrock" else None,
+            "aws_profile": aws_profile if provider in _AWS_PROVIDERS else None,
+            "aws_region": aws_region if provider in _AWS_PROVIDERS else None,
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -313,7 +317,7 @@ def _configured_model(
         return DeterministicWorkflowModel(
             target_order_id, extraction=SCENARIOS[scenario].expected_extraction
         )
-    if provider == "bedrock":
+    if provider in _AWS_PROVIDERS:
         return build_model(
             provider="bedrock",
             model_id=model_id,
@@ -356,7 +360,7 @@ def _build_agent(
         agent_id=agent_id,
         system_prompt=(
             WORKFLOW_SYSTEM_PROMPT
-            if provider == WORKFLOW_PROVIDER
+            if provider in _WORKFLOW_PROVIDERS
             else "Apply only the supplied persisted production proposal."
         ),
         callback_handler=None,
@@ -380,7 +384,7 @@ def start(
     runtime_dir.mkdir(parents=True, exist_ok=False)
     repository = SQLiteShopRepository(runtime_dir / "shop.db", clock=utc_now)
 
-    if provider == WORKFLOW_PROVIDER:
+    if provider in _WORKFLOW_PROVIDERS:
         repository.initialize(spec.build_initial())
         service = ShopService(repository, catalog=spec.catalog)
         initial_digest = repository.domain_digest()
@@ -434,7 +438,7 @@ def start(
         for event in repository.audit_events()
         if event.event_type == "request_intake"
     ]
-    if provider == WORKFLOW_PROVIDER:
+    if provider in _WORKFLOW_PROVIDERS:
         if len(intake_events) != 1:
             raise RuntimeError("Expected exactly one intake event")
         if intake_events[0].details.get("order_id") != target_order_id:
@@ -463,8 +467,8 @@ def start(
         "digest_at_interrupt": digest_at_interrupt,
         "provider": provider,
         "model_id": model_id,
-        "aws_profile": aws_profile if provider == "bedrock" else None,
-        "aws_region": aws_region if provider == "bedrock" else None,
+        "aws_profile": aws_profile if provider in _AWS_PROVIDERS else None,
+        "aws_region": aws_region if provider in _AWS_PROVIDERS else None,
     }
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     checkpoint_path.write_text(json.dumps(checkpoint, indent=2, sort_keys=True) + "\n")
@@ -503,7 +507,7 @@ def _load_checkpoint(path: Path) -> dict[str, object]:
             raise ValueError(f"Checkpoint {key} is invalid")
     if not isinstance(data["start_process_id"], int):
         raise TypeError("Checkpoint process identity is invalid")
-    if data["provider"] not in {"deterministic", "bedrock", WORKFLOW_PROVIDER}:
+    if data["provider"] not in {"deterministic", "bedrock", WORKFLOW_PROVIDER, BEDROCK_WORKFLOW_PROVIDER}:
         raise ValueError("Checkpoint provider is invalid")
     if not isinstance(data["model_id"], str) or not data["model_id"]:
         raise ValueError("Checkpoint model identity is invalid")
@@ -511,7 +515,7 @@ def _load_checkpoint(path: Path) -> dict[str, object]:
         raise ValueError("Checkpoint scenario is invalid")
     if data["target_order_id"] != SCENARIOS[str(data["scenario"])].target_order_id:
         raise ValueError("Checkpoint target order does not match its scenario")
-    if data["provider"] == "bedrock" and (
+    if data["provider"] in _AWS_PROVIDERS and (
         not isinstance(data["aws_profile"], str)
         or not data["aws_profile"]
         or not isinstance(data["aws_region"], str)
@@ -574,7 +578,7 @@ def resume(
         repository,
         catalog=(
             SCENARIOS[str(checkpoint["scenario"])].catalog
-            if provider == WORKFLOW_PROVIDER
+            if provider in _WORKFLOW_PROVIDERS
             else None
         ),
     )
@@ -669,7 +673,7 @@ def main() -> None:
     start_parser.add_argument("--checkpoint", type=Path, required=True)
     start_parser.add_argument(
         "--provider",
-        choices=("deterministic", "bedrock", WORKFLOW_PROVIDER),
+        choices=("deterministic", "bedrock", WORKFLOW_PROVIDER, BEDROCK_WORKFLOW_PROVIDER),
         default="deterministic",
     )
     start_parser.add_argument("--model", default="deterministic-apply-model")
@@ -683,7 +687,7 @@ def main() -> None:
     resume_parser.add_argument("--report", type=Path, required=True)
     resume_parser.add_argument(
         "--provider",
-        choices=("deterministic", "bedrock", WORKFLOW_PROVIDER),
+        choices=("deterministic", "bedrock", WORKFLOW_PROVIDER, BEDROCK_WORKFLOW_PROVIDER),
         default="deterministic",
     )
     resume_parser.add_argument("--model", default="deterministic-apply-model")
