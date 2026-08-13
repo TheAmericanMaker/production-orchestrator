@@ -4,6 +4,7 @@ import json
 import os
 import re
 from collections.abc import AsyncGenerator
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -28,14 +29,16 @@ WORKFLOW_MODEL_ID = "deterministic-workflow-model"
 
 WORKFLOW_SYSTEM_PROMPT = """You are executing the Production Orchestrator workflow.
 Use tools for every factual claim. Do not calculate or invent shop facts yourself.
-For the target order, call these tools exactly once and in this order:
-1. list_active_orders
-2. get_inventory
-3. get_machine_capacity
-4. analyze_shop_blockers
-5. propose_schedule
-6. draft_communications using the exact content_hash from propose_schedule
-7. apply_production_plan using that same exact content_hash
+Extract only what the customer message states; the intake tool validates it.
+Call these tools exactly once and in this order:
+1. intake_customer_request with the fields extracted from the customer message
+2. list_active_orders
+3. get_inventory
+4. get_machine_capacity
+5. analyze_shop_blockers
+6. propose_schedule
+7. draft_communications using the exact content_hash from propose_schedule
+8. apply_production_plan using that same exact content_hash
 Do not ask for approval in prose; the apply tool has a human interrupt.
 If the tool is rejected, do not retry it. Report the rejection and stop.
 """
@@ -50,6 +53,23 @@ def start_prompt(proposal_hash: str) -> str:
 
 def workflow_start_prompt(target_order_id: str) -> str:
     return f"Execute the complete workflow for {target_order_id} now."
+
+
+def workflow_intake_prompt(spec) -> str:
+    codes = ", ".join(sorted(spec.catalog))
+    return (
+        "Today is 2026-08-12. A customer request just arrived:\n"
+        "---\n"
+        f"{spec.customer_email}\n"
+        "---\n"
+        f"Assign it order id {spec.target_order_id}. "
+        f"Available catalog product codes: {codes}. "
+        "Extract the product code, quantity, requested completion day "
+        "(YYYY-MM-DD), and a 1-100 rush priority from the message, then call "
+        "intake_customer_request with exactly those fields. Then execute the "
+        "complete workflow for the new order through the remaining tools, "
+        "ending with apply_production_plan."
+    )
 
 
 def agent_id_for(
@@ -157,9 +177,16 @@ class DeterministicWorkflowModel(Model):
         re.compile(r"'content_hash':\s*'([0-9a-f]{64})'"),
     )
 
-    def __init__(self, target_order_id: str) -> None:
+    def __init__(self, target_order_id: str, extraction=None) -> None:
         self.target_order_id = target_order_id
+        self.extraction = extraction
         self.config: dict[str, Any] = {"model_id": WORKFLOW_MODEL_ID}
+
+    @property
+    def sequence(self) -> tuple[str, ...]:
+        if self.extraction is None:
+            return self.SEQUENCE
+        return ("intake_customer_request", *self.SEQUENCE)
 
     def update_config(self, **model_config: Any) -> None:
         self.config.update(model_config)
@@ -205,7 +232,9 @@ class DeterministicWorkflowModel(Model):
                     return found
         raise RuntimeError("Proposal hash is not available from the propose_schedule result")
 
-    def _input_for(self, tool_name: str, messages: Any) -> dict[str, str]:
+    def _input_for(self, tool_name: str, messages: Any) -> dict[str, Any]:
+        if tool_name == "intake_customer_request":
+            return asdict(self.extraction)
         if tool_name in {"analyze_shop_blockers", "propose_schedule"}:
             return {"target_order_id": self.target_order_id}
         if tool_name in {"draft_communications", "apply_production_plan"}:
@@ -219,7 +248,7 @@ class DeterministicWorkflowModel(Model):
             for block in message["content"]
             if "toolUse" in block
         ]
-        next_tool = next((name for name in self.SEQUENCE if name not in seen), None)
+        next_tool = next((name for name in self.sequence if name not in seen), None)
         yield {"messageStart": {"role": "assistant"}}
         if next_tool is None:
             yield {"contentBlockStart": {"start": {}}}
@@ -266,6 +295,7 @@ def _configured_model(
     target_order_id: str | None,
     aws_profile: str | None,
     aws_region: str | None,
+    scenario: str | None = None,
 ) -> Any:
     if provider == "deterministic":
         if model_id != "deterministic-apply-model":
@@ -278,7 +308,11 @@ def _configured_model(
             raise ValueError("Deterministic workflow requires deterministic-workflow-model")
         if not target_order_id:
             raise ValueError("Deterministic workflow requires a target order")
-        return DeterministicWorkflowModel(target_order_id)
+        if scenario not in SCENARIOS:
+            raise ValueError("Deterministic workflow requires a known scenario")
+        return DeterministicWorkflowModel(
+            target_order_id, extraction=SCENARIOS[scenario].expected_extraction
+        )
     if provider == "bedrock":
         return build_model(
             provider="bedrock",
@@ -301,6 +335,7 @@ def _build_agent(
     aws_region: str | None,
     agent_id: str,
     target_order_id: str | None = None,
+    scenario: str | None = None,
 ) -> Agent:
     return Agent(
         model=_configured_model(
@@ -310,6 +345,7 @@ def _build_agent(
             target_order_id=target_order_id,
             aws_profile=aws_profile,
             aws_region=aws_region,
+            scenario=scenario,
         ),
         tools=build_strands_tools(service),
         hooks=[ProductionPlanApprovalHook(service, actor="restart-spike-operator")],
@@ -343,14 +379,17 @@ def start(
     target_order_id = spec.target_order_id
     runtime_dir.mkdir(parents=True, exist_ok=False)
     repository = SQLiteShopRepository(runtime_dir / "shop.db", clock=utc_now)
-    repository.initialize(spec.build())
-    service = ShopService(repository)
-    initial_digest = repository.domain_digest()
 
     if provider == WORKFLOW_PROVIDER:
-        prompt = workflow_start_prompt(target_order_id)
+        repository.initialize(spec.build_initial())
+        service = ShopService(repository, catalog=spec.catalog)
+        initial_digest = repository.domain_digest()
+        prompt = workflow_intake_prompt(spec)
         expected_proposal_hash = None
     else:
+        repository.initialize(spec.build())
+        service = ShopService(repository)
+        initial_digest = repository.domain_digest()
         proposal = service.propose_schedule(target_order_id)
         expected_proposal_hash = str(proposal["content_hash"])
         prompt = start_prompt(expected_proposal_hash)
@@ -373,6 +412,7 @@ def start(
         aws_region=aws_region,
         agent_id=agent_id,
         target_order_id=target_order_id,
+        scenario=scenario,
     )
 
     result = agent(prompt)
@@ -389,7 +429,24 @@ def start(
     if repository.load_proposal(proposal_hash) is None:
         raise RuntimeError("Interrupted proposal is not persisted")
     digest_at_interrupt = repository.domain_digest()
-    if digest_at_interrupt != initial_digest:
+    intake_events = [
+        event
+        for event in repository.audit_events()
+        if event.event_type == "request_intake"
+    ]
+    if provider == WORKFLOW_PROVIDER:
+        if len(intake_events) != 1:
+            raise RuntimeError("Expected exactly one intake event")
+        if intake_events[0].details.get("order_id") != target_order_id:
+            raise RuntimeError("Intake created an unexpected order")
+        baseline_digest = str(intake_events[0].details.get("domain_digest_after") or "")
+        if not baseline_digest:
+            raise RuntimeError("Intake event did not record a domain digest")
+    else:
+        if intake_events:
+            raise RuntimeError("Unexpected intake event")
+        baseline_digest = initial_digest
+    if digest_at_interrupt != baseline_digest:
         raise RuntimeError("Domain state changed before approval")
 
     checkpoint: dict[str, object] = {
@@ -402,7 +459,7 @@ def start(
         "target_order_id": target_order_id,
         "session_id": SESSION_ID,
         "start_process_id": os.getpid(),
-        "initial_domain_digest": initial_digest,
+        "initial_domain_digest": baseline_digest,
         "digest_at_interrupt": digest_at_interrupt,
         "provider": provider,
         "model_id": model_id,
@@ -513,7 +570,14 @@ def resume(
         or proposal_events[0].details.get("target_order_id") != proposal.target_order_id
     ):
         raise ValueError("Checkpoint proposal does not match canonical persisted evidence")
-    service = ShopService(repository)
+    service = ShopService(
+        repository,
+        catalog=(
+            SCENARIOS[str(checkpoint["scenario"])].catalog
+            if provider == WORKFLOW_PROVIDER
+            else None
+        ),
+    )
     agent_id = str(checkpoint["agent_id"])
     agent = _build_agent(
         runtime_dir,
@@ -525,6 +589,7 @@ def resume(
         aws_region=aws_region,
         agent_id=agent_id,
         target_order_id=str(checkpoint["target_order_id"]),
+        scenario=str(checkpoint["scenario"]),
     )
 
     interrupt_id = str(checkpoint["interrupt_id"])

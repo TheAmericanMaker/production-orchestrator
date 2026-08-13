@@ -1,6 +1,7 @@
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field, replace
 
+from production_orchestrator.intake import CatalogItem, RequestExtraction
 from production_orchestrator.models import Machine, Order, ScheduleEntry, ShopState
 
 _TODAY = "2026-08-12"
@@ -80,7 +81,7 @@ def team_jerseys_scenario() -> ShopState:
                 requested_day=_TODAY,
                 machine_type="embroidery",
                 duration_hours=7,
-                materials={"THREAD-NAVY-40": 800},
+                materials={"THREAD-NAVY-40": 700},
             ),
         },
         machines={
@@ -160,6 +161,19 @@ class ScenarioSpec:
     summary: str
     target_order_id: str
     build: Callable[[], ShopState]
+    customer_email: str = ""
+    catalog: Mapping[str, CatalogItem] = field(default_factory=dict)
+    expected_extraction: RequestExtraction | None = None
+
+    def build_initial(self) -> ShopState:
+        """The shop before the customer request arrives: no target order yet."""
+        state = self.build()
+        orders = {
+            order_id: order
+            for order_id, order in state.orders.items()
+            if order_id != self.target_order_id
+        }
+        return replace(state, orders=orders)
 
 
 SCENARIOS: dict[str, ScenarioSpec] = {
@@ -175,6 +189,28 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             ),
             target_order_id="RUSH-200",
             build=rush_order_scenario,
+            customer_email=(
+                "Subject: HELP - booth event moved up\n\n"
+                "Hi! Our trade-show booth slot just moved up to TODAY. We need the "
+                "40 embroidered caps with the red logo finished today — I know it is "
+                "a rush, we will pay the rush fee. Same red thread as the mockup. "
+                "Please tell me this is possible. — Dana, Ridgeline Outfitters"
+            ),
+            catalog={
+                "embroidered-caps": CatalogItem(
+                    product_code="embroidered-caps",
+                    machine_type="embroidery",
+                    minutes_per_unit=6,
+                    materials_per_unit={"THREAD-RED-40": 30},
+                )
+            },
+            expected_extraction=RequestExtraction(
+                order_id="RUSH-200",
+                product_code="embroidered-caps",
+                quantity=40,
+                requested_day="2026-08-12",
+                priority=100,
+            ),
         ),
         ScenarioSpec(
             name="team-jerseys",
@@ -186,6 +222,27 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             ),
             target_order_id="JERSEY-310",
             build=team_jerseys_scenario,
+            customer_email=(
+                "Subject: We made the finals!!\n\n"
+                "The squad made the championship game — 35 jerseys with the navy "
+                "crest, and we need them today so the team has them for tomorrow's "
+                "final. Priority job, whatever it takes. — Coach Rivera, Northside FC"
+            ),
+            catalog={
+                "team-jerseys": CatalogItem(
+                    product_code="team-jerseys",
+                    machine_type="embroidery",
+                    minutes_per_unit=12,
+                    materials_per_unit={"THREAD-NAVY-40": 20},
+                )
+            },
+            expected_extraction=RequestExtraction(
+                order_id="JERSEY-310",
+                product_code="team-jerseys",
+                quantity=35,
+                requested_day="2026-08-12",
+                priority=90,
+            ),
         ),
         ScenarioSpec(
             name="metallic-monogram",
@@ -197,6 +254,28 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             ),
             target_order_id="GOLD-500",
             build=metallic_monogram_scenario,
+            customer_email=(
+                "Subject: Executive gala tonight\n\n"
+                "We have 25 blazers that need the gold metallic monogram before the "
+                "executive gala this evening. The board will be wearing them on "
+                "stage, so quality matters more than anything. Can you fit us in "
+                "today? — Priya, Meridian Partners"
+            ),
+            catalog={
+                "gold-monogram-blazers": CatalogItem(
+                    product_code="gold-monogram-blazers",
+                    machine_type="embroidery",
+                    minutes_per_unit=12,
+                    materials_per_unit={"THREAD-GOLD-60": 60},
+                )
+            },
+            expected_extraction=RequestExtraction(
+                order_id="GOLD-500",
+                product_code="gold-monogram-blazers",
+                quantity=25,
+                requested_day="2026-08-12",
+                priority=80,
+            ),
         ),
     )
 }

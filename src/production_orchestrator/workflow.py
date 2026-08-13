@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from dataclasses import asdict
 from typing import Any
 
@@ -5,6 +6,7 @@ from strands import tool
 from strands.hooks import BeforeToolCallEvent, HookProvider, HookRegistry
 
 from production_orchestrator.approval import apply_production_plan
+from production_orchestrator.intake import CatalogItem, RequestExtraction, validate_extraction
 from production_orchestrator.models import ProductionPlan
 from production_orchestrator.persistence import SQLiteShopRepository
 from production_orchestrator.planning import analyze_blockers, create_production_plan
@@ -13,9 +15,50 @@ from production_orchestrator.planning import analyze_blockers, create_production
 class ShopService:
     """Narrow deterministic boundary exposed to the Strands agent."""
 
-    def __init__(self, repository: SQLiteShopRepository) -> None:
+    def __init__(
+        self,
+        repository: SQLiteShopRepository,
+        catalog: Mapping[str, CatalogItem] | None = None,
+    ) -> None:
         self.repository = repository
+        self.catalog = catalog
         self._proposals: dict[str, ProductionPlan] = {}
+
+    def intake_customer_request(
+        self,
+        *,
+        order_id: str,
+        product_code: str,
+        quantity: int,
+        requested_day: str,
+        priority: int,
+    ) -> dict[str, object]:
+        if self.catalog is None:
+            raise RuntimeError("Intake is not enabled for this service")
+        state = self.repository.load_state()
+        valid_days = sorted(
+            {day for machine in state.machines.values() for day in machine.daily_capacity}
+        )
+        order = validate_extraction(
+            catalog=self.catalog,
+            extraction=RequestExtraction(
+                order_id=order_id,
+                product_code=product_code,
+                quantity=quantity,
+                requested_day=requested_day,
+                priority=priority,
+            ),
+            valid_days=valid_days,
+        )
+        self.repository.add_order(order)
+        return {
+            "order_id": order.order_id,
+            "requested_day": order.requested_day,
+            "machine_type": order.machine_type,
+            "duration_hours": order.duration_hours,
+            "materials": dict(order.materials),
+            "priority": order.priority,
+        }
 
     def list_active_orders(self) -> dict[str, object]:
         state = self.repository.load_state()
@@ -248,7 +291,32 @@ def build_strands_tools(service: ShopService) -> list[Any]:
         """
         return service.apply_plan(proposal_hash)
 
-    return [
+    @tool
+    def intake_customer_request(
+        order_id: str,
+        product_code: str,
+        quantity: int,
+        requested_day: str,
+        priority: int,
+    ) -> dict[str, object]:
+        """Validate an extracted customer request and add it to the order queue.
+
+        Args:
+            order_id: The shop-assigned order identifier for this request.
+            product_code: Exact catalog product code the customer is asking for.
+            quantity: Number of units requested.
+            requested_day: Requested completion day (YYYY-MM-DD).
+            priority: Urgency from 1 (lowest) to 100 (highest rush).
+        """
+        return service.intake_customer_request(
+            order_id=order_id,
+            product_code=product_code,
+            quantity=quantity,
+            requested_day=requested_day,
+            priority=priority,
+        )
+
+    tools = [
         list_active_orders,
         get_inventory,
         get_machine_capacity,
@@ -257,3 +325,6 @@ def build_strands_tools(service: ShopService) -> list[Any]:
         draft_communications,
         apply_production_plan,
     ]
+    if service.catalog is not None:
+        tools.insert(0, intake_customer_request)
+    return tools

@@ -142,7 +142,7 @@ function renderHero(data) {
     ? data.phase === "approved"
       ? "You approved the coordinated plan and the agent applied it exactly once. The board below shows the updated shop."
       : "You kept the current plan. The agent changed nothing — the shop state and audit trail below prove it."
-    : `${data.scenario.summary} The agent checked the shop through its tools and prepared one coordinated plan. Nothing changes unless you approve it.`;
+    : `${data.scenario.summary} From one customer email, the agent created the order, checked the shop through its tools, and prepared one coordinated plan. Nothing changes unless you approve it.`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -153,6 +153,13 @@ const FEED_VIEWS = {
   scenario_initialized: (d) => ({
     title: "Synthetic shop initialized",
     detail: `Deterministic shop state loaded at revision ${d.revision ?? 1}`,
+  }),
+  request_intake: (d) => ({
+    title: "Read the customer request and created the order",
+    detail: `Extraction validated against the product catalog — ${d.order_id ?? "order"}: ${
+      d.duration_hours ?? "?"
+    }h of work, priority ${d.priority ?? "?"}, due ${d.requested_day ?? "?"}`,
+    tool: "intake_customer_request",
   }),
   active_orders_read: (d) => ({
     title: "Checked the active order queue",
@@ -247,6 +254,28 @@ function feedCard(data) {
       <span class="pill accent">${toolCalls} REAL TOOL CALLS</span>
     </div>
     <ol class="feed">${body}</ol>
+  </section>`;
+}
+
+function emailCard(data) {
+  const email = data.scenario.customer_email;
+  if (!email) return "";
+  const lines = email.split("\n");
+  const subject = lines[0].replace(/^Subject:\s*/, "");
+  const body = lines.slice(1).join("\n").trim();
+  return `
+  <section class="card wide email-card">
+    <div class="cardhead">
+      <div>
+        <h2>The customer request that started this</h2>
+        <div class="caption">Synthetic email — the agent's only unstructured input. Everything below came from it.</div>
+      </div>
+      <span class="pill accent">UNSTRUCTURED IN</span>
+    </div>
+    <div class="email-paper">
+      <div class="email-subject">${esc(subject)}</div>
+      <p class="email-body">${esc(body)}</p>
+    </div>
   </section>`;
 }
 
@@ -684,7 +713,7 @@ function phasebar(data) {
   const done = data.phase !== "pending";
   return `
   <div class="phasebar">
-    <div class="step active"><b>01 · AGENT RUN</b>Checked facts through tools, planned, drafted</div>
+    <div class="step active"><b>01 · AGENT RUN</b>Read the request, checked facts, planned, drafted</div>
     <div class="step active"><b>02 · INTERRUPT</b>${done ? "Released by your decision" : "Holding the write for approval"}</div>
     <div class="step ${done ? "active" : ""}"><b>03 · DECIDE</b>${done ? esc(data.phase) : "Human approval required"}</div>
   </div>`;
@@ -711,8 +740,8 @@ function render(data) {
   renderHero(data);
   const done = data.phase !== "pending";
   const sections = done
-    ? [phasebar(data), outcomeCard(data), boardCard(data), feedCard(data)]
-    : [phasebar(data), feedCard(data), decisionBrief(data), boardCard(data)];
+    ? [phasebar(data), outcomeCard(data), boardCard(data), emailCard(data), feedCard(data)]
+    : [phasebar(data), emailCard(data), feedCard(data), decisionBrief(data), boardCard(data)];
   sections.push(
     `<div class="grid mt16">${snapshotCard(data)}${draftsCard(data)}</div>`,
     technicalProof(data)

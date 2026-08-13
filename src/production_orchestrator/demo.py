@@ -35,6 +35,7 @@ _STATIC_ASSETS = {
 
 _PENDING_EVENTS = (
     "scenario_initialized",
+    "request_intake",
     "active_orders_read",
     "inventory_read",
     "machine_capacity_read",
@@ -54,6 +55,7 @@ def _scenario_public(name: str) -> dict[str, str]:
         "question": spec.question,
         "summary": spec.summary,
         "target_order_id": spec.target_order_id,
+        "customer_email": spec.customer_email,
     }
 
 
