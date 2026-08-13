@@ -396,3 +396,47 @@ def test_resumed_interrupt_cannot_be_replayed(tmp_path: Path) -> None:
     assert "interrupt" in replay.stderr.lower()
     repository = SQLiteShopRepository(runtime_dir / "shop.db", clock=lambda: "2026-08-12T00:00:00Z")
     assert [event.event_type for event in repository.audit_events()].count("plan_applied") == 1
+
+
+def test_bedrock_workflow_provider_validates_configuration_offline(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="profile"):
+        restart_spike._configured_model(
+            provider="bedrock-workflow",
+            model_id="amazon.nova-lite-v1:0",
+            proposal_hash=None,
+            target_order_id="RUSH-200",
+            aws_profile=None,
+            aws_region=None,
+            scenario="rush-order",
+        )
+
+    with_hash = restart_spike.agent_id_for(
+        provider="bedrock-workflow",
+        model_id="amazon.nova-lite-v1:0",
+        proposal_hash="a" * 64,
+        aws_profile="profile",
+        aws_region="us-east-1",
+        scenario="rush-order",
+    )
+    without_hash = restart_spike.agent_id_for(
+        provider="bedrock-workflow",
+        model_id="amazon.nova-lite-v1:0",
+        proposal_hash=None,
+        aws_profile="profile",
+        aws_region="us-east-1",
+        scenario="rush-order",
+    )
+    assert with_hash == without_hash  # workflow identity binds scenario, not hash
+
+    runtime_dir = tmp_path / "bedrock-workflow-checkpoint"
+    checkpoint = _start(runtime_dir)  # deterministic classic run supplies a real shape
+    checkpoint.update(
+        provider="bedrock-workflow",
+        model_id="amazon.nova-lite-v1:0",
+        aws_profile=None,
+        aws_region=None,
+    )
+    checkpoint_path = runtime_dir / "checkpoint.json"
+    checkpoint_path.write_text(json.dumps(checkpoint))
+    with pytest.raises(ValueError, match="Bedrock configuration"):
+        restart_spike._load_checkpoint(checkpoint_path)
