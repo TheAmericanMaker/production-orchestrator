@@ -91,7 +91,9 @@ sequenceDiagram
     B->>S: forged / stale / replayed → refuse, record, exit non-zero
 ```
 
-The checkpoint is the trust boundary, so every field in it is re-verified rather than trusted: a wrong interrupt id, a different session identity, an altered proposal binding, a changed provider configuration, a domain digest that no longer matches, or a second use of an already-resumed interrupt each fail closed before any model call or write. A single helper, `_provider_configuration`, is the sole source of the provider identity that `start` persists and `resume` re-trusts — the two used to drift apart, which is exactly how the `bedrock-workflow` resume path was broken and fixed (issue #11, PR #16).
+The checkpoint is the trust boundary, so every field in it is re-verified rather than trusted: a wrong interrupt id, a different session identity, an altered proposal binding, a changed provider configuration, a domain digest that no longer matches, or a second use of an already-resumed interrupt each fail closed before any model call or write.
+
+The provider configuration includes **which credential chain the run is entitled to use** — a named developer profile, or the task role a container receives on AgentCore Runtime — because the credential source decides what identity the agent acts as. It is always explicit, never inferred from whatever credentials happen to be present, and swapping it between start and resume fails closed like any other field. Checkpoints written before this field existed default to `profile` and remain resumable; the fields hashed into the agent id are frozen so that adding configuration can never orphan a persisted session. A single helper, `_provider_configuration`, is the sole source of the provider identity that `start` persists and `resume` re-trusts — the two used to drift apart, which is exactly how the `bedrock-workflow` resume path was broken and fixed (issue #11, PR #16).
 
 ## Demo surfaces
 
