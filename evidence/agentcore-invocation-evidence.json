@@ -1,0 +1,199 @@
+{
+  "runtime_arn": "arn:aws:bedrock-agentcore:us-east-1:493223220078:runtime/production_orchestrator-3S24euH1Cz",
+  "endpoint": "production_orchestrator_ep",
+  "runs": [
+    {
+      "session": "judge-reject-fd39c5c8-c357-4692-9a55-1b2c096683be",
+      "start": {
+        "session_id": "judge-reject-fd39c5c8-c357-4692-9a55-1b2c096683be",
+        "phase": "awaiting_approval",
+        "scenario": {
+          "name": "rush-order",
+          "title": "Rush order, full machine",
+          "question": "Can we fit the rush order into today\u2019s schedule?",
+          "summary": "A high-priority rush order arrives with today\u2019s machine already booked and a key thread color running low.",
+          "target_order_id": "RUSH-200",
+          "customer_email": "Subject: HELP - booth event moved up\n\nHi! Our trade-show booth slot just moved up to TODAY. We need the 40 embroidered caps with the red logo finished today \u2014 I know it is a rush, we will pay the rush fee. Same red thread as the mockup. Please tell me this is possible. \u2014 Dana, Ridgeline Outfitters"
+        },
+        "proposal_hash": "6ef62d9fdaf1bb07f35b6d95385a0991035a894988afa7a7fdf17711d449d7dc",
+        "blockers": [
+          "inventory_shortage",
+          "capacity_conflict"
+        ],
+        "interrupt_id": "v1:before_tool_call:workflow-8-apply_production_plan:0e47f884-de38-5d20-88d9-b87e87ad695f",
+        "interrupt_name": "production-orchestrator-apply-plan",
+        "provider": "deterministic-workflow",
+        "model_id": "deterministic-workflow-model",
+        "state_revision": 1,
+        "plan_applied_count": 0,
+        "audit_event_types": [
+          "scenario_initialized",
+          "request_intake",
+          "active_orders_read",
+          "inventory_read",
+          "machine_capacity_read",
+          "blockers_analyzed",
+          "proposal_created",
+          "communications_drafted"
+        ],
+        "start_process_id": 10,
+        "resume_process_id": null,
+        "process_boundary_proven": null,
+        "workflow_passed": null,
+        "checkpoint": {
+          "first_stop_reason": "interrupt",
+          "interrupt_id": "v1:before_tool_call:workflow-8-apply_production_plan:0e47f884-de38-5d20-88d9-b87e87ad695f",
+          "interrupt_name": "production-orchestrator-apply-plan",
+          "proposal_hash": "6ef62d9fdaf1bb07f35b6d95385a0991035a894988afa7a7fdf17711d449d7dc",
+          "provider": "deterministic-workflow",
+          "model_id": "deterministic-workflow-model",
+          "start_process_id": 10
+        }
+      },
+      "reject": {
+        "session_id": "judge-reject-fd39c5c8-c357-4692-9a55-1b2c096683be",
+        "phase": "rejected",
+        "scenario": {
+          "name": "rush-order",
+          "title": "Rush order, full machine",
+          "question": "Can we fit the rush order into today\u2019s schedule?",
+          "summary": "A high-priority rush order arrives with today\u2019s machine already booked and a key thread color running low.",
+          "target_order_id": "RUSH-200",
+          "customer_email": "Subject: HELP - booth event moved up\n\nHi! Our trade-show booth slot just moved up to TODAY. We need the 40 embroidered caps with the red logo finished today \u2014 I know it is a rush, we will pay the rush fee. Same red thread as the mockup. Please tell me this is possible. \u2014 Dana, Ridgeline Outfitters"
+        },
+        "proposal_hash": "6ef62d9fdaf1bb07f35b6d95385a0991035a894988afa7a7fdf17711d449d7dc",
+        "blockers": [
+          "inventory_shortage",
+          "capacity_conflict"
+        ],
+        "interrupt_id": "v1:before_tool_call:workflow-8-apply_production_plan:0e47f884-de38-5d20-88d9-b87e87ad695f",
+        "interrupt_name": "production-orchestrator-apply-plan",
+        "provider": "deterministic-workflow",
+        "model_id": "deterministic-workflow-model",
+        "state_revision": 1,
+        "plan_applied_count": 0,
+        "audit_event_types": [
+          "scenario_initialized",
+          "request_intake",
+          "active_orders_read",
+          "inventory_read",
+          "machine_capacity_read",
+          "blockers_analyzed",
+          "proposal_created",
+          "communications_drafted",
+          "approval_rejected"
+        ],
+        "start_process_id": 10,
+        "resume_process_id": 14,
+        "process_boundary_proven": true,
+        "workflow_passed": true,
+        "checkpoint": {
+          "first_stop_reason": "interrupt",
+          "interrupt_id": "v1:before_tool_call:workflow-8-apply_production_plan:0e47f884-de38-5d20-88d9-b87e87ad695f",
+          "interrupt_name": "production-orchestrator-apply-plan",
+          "proposal_hash": "6ef62d9fdaf1bb07f35b6d95385a0991035a894988afa7a7fdf17711d449d7dc",
+          "provider": "deterministic-workflow",
+          "model_id": "deterministic-workflow-model",
+          "start_process_id": 10
+        }
+      }
+    },
+    {
+      "session": "judge-approve-44c23c68-7ed4-4960-908a-d5fb4dabbfb9",
+      "start": {
+        "session_id": "judge-approve-44c23c68-7ed4-4960-908a-d5fb4dabbfb9",
+        "phase": "awaiting_approval",
+        "scenario": {
+          "name": "rush-order",
+          "title": "Rush order, full machine",
+          "question": "Can we fit the rush order into today\u2019s schedule?",
+          "summary": "A high-priority rush order arrives with today\u2019s machine already booked and a key thread color running low.",
+          "target_order_id": "RUSH-200",
+          "customer_email": "Subject: HELP - booth event moved up\n\nHi! Our trade-show booth slot just moved up to TODAY. We need the 40 embroidered caps with the red logo finished today \u2014 I know it is a rush, we will pay the rush fee. Same red thread as the mockup. Please tell me this is possible. \u2014 Dana, Ridgeline Outfitters"
+        },
+        "proposal_hash": "6ef62d9fdaf1bb07f35b6d95385a0991035a894988afa7a7fdf17711d449d7dc",
+        "blockers": [
+          "inventory_shortage",
+          "capacity_conflict"
+        ],
+        "interrupt_id": "v1:before_tool_call:workflow-8-apply_production_plan:0e47f884-de38-5d20-88d9-b87e87ad695f",
+        "interrupt_name": "production-orchestrator-apply-plan",
+        "provider": "deterministic-workflow",
+        "model_id": "deterministic-workflow-model",
+        "state_revision": 1,
+        "plan_applied_count": 0,
+        "audit_event_types": [
+          "scenario_initialized",
+          "request_intake",
+          "active_orders_read",
+          "inventory_read",
+          "machine_capacity_read",
+          "blockers_analyzed",
+          "proposal_created",
+          "communications_drafted"
+        ],
+        "start_process_id": 10,
+        "resume_process_id": null,
+        "process_boundary_proven": null,
+        "workflow_passed": null,
+        "checkpoint": {
+          "first_stop_reason": "interrupt",
+          "interrupt_id": "v1:before_tool_call:workflow-8-apply_production_plan:0e47f884-de38-5d20-88d9-b87e87ad695f",
+          "interrupt_name": "production-orchestrator-apply-plan",
+          "proposal_hash": "6ef62d9fdaf1bb07f35b6d95385a0991035a894988afa7a7fdf17711d449d7dc",
+          "provider": "deterministic-workflow",
+          "model_id": "deterministic-workflow-model",
+          "start_process_id": 10
+        }
+      },
+      "approve": {
+        "session_id": "judge-approve-44c23c68-7ed4-4960-908a-d5fb4dabbfb9",
+        "phase": "approved",
+        "scenario": {
+          "name": "rush-order",
+          "title": "Rush order, full machine",
+          "question": "Can we fit the rush order into today\u2019s schedule?",
+          "summary": "A high-priority rush order arrives with today\u2019s machine already booked and a key thread color running low.",
+          "target_order_id": "RUSH-200",
+          "customer_email": "Subject: HELP - booth event moved up\n\nHi! Our trade-show booth slot just moved up to TODAY. We need the 40 embroidered caps with the red logo finished today \u2014 I know it is a rush, we will pay the rush fee. Same red thread as the mockup. Please tell me this is possible. \u2014 Dana, Ridgeline Outfitters"
+        },
+        "proposal_hash": "6ef62d9fdaf1bb07f35b6d95385a0991035a894988afa7a7fdf17711d449d7dc",
+        "blockers": [
+          "inventory_shortage",
+          "capacity_conflict"
+        ],
+        "interrupt_id": "v1:before_tool_call:workflow-8-apply_production_plan:0e47f884-de38-5d20-88d9-b87e87ad695f",
+        "interrupt_name": "production-orchestrator-apply-plan",
+        "provider": "deterministic-workflow",
+        "model_id": "deterministic-workflow-model",
+        "state_revision": 2,
+        "plan_applied_count": 1,
+        "audit_event_types": [
+          "scenario_initialized",
+          "request_intake",
+          "active_orders_read",
+          "inventory_read",
+          "machine_capacity_read",
+          "blockers_analyzed",
+          "proposal_created",
+          "communications_drafted",
+          "approval_granted",
+          "plan_applied"
+        ],
+        "start_process_id": 10,
+        "resume_process_id": 14,
+        "process_boundary_proven": true,
+        "workflow_passed": true,
+        "checkpoint": {
+          "first_stop_reason": "interrupt",
+          "interrupt_id": "v1:before_tool_call:workflow-8-apply_production_plan:0e47f884-de38-5d20-88d9-b87e87ad695f",
+          "interrupt_name": "production-orchestrator-apply-plan",
+          "proposal_hash": "6ef62d9fdaf1bb07f35b6d95385a0991035a894988afa7a7fdf17711d449d7dc",
+          "provider": "deterministic-workflow",
+          "model_id": "deterministic-workflow-model",
+          "start_process_id": 10
+        }
+      }
+    }
+  ]
+}
