@@ -1,0 +1,32 @@
+{
+  "audit_event_types": [
+    "scenario_initialized",
+    "request_intake",
+    "active_orders_read",
+    "inventory_read",
+    "machine_capacity_read",
+    "blockers_analyzed",
+    "proposal_created",
+    "communications_drafted",
+    "approval_granted",
+    "plan_applied"
+  ],
+  "aws_region": "us-east-1",
+  "decision": "approve",
+  "final_domain_digest": "40b21d75a979e7c27f52b75335b4e731f3875576d6c3a9e4c6a9b40cb3efc76a",
+  "final_state_revision": 2,
+  "final_stop_reason": "end_turn",
+  "interrupt_id": "v1:before_tool_call:tooluse_SkB6EithVoDcU6cqYTRNSK:0e47f884-de38-5d20-88d9-b87e87ad695f",
+  "model_id": "amazon.nova-lite-v1:0",
+  "official_interrupt_response_used": true,
+  "ollama_host": null,
+  "plan_applied_count": 1,
+  "process_boundary_proven": true,
+  "proposal_hash": "6ef62d9fdaf1bb07f35b6d95385a0991035a894988afa7a7fdf17711d449d7dc",
+  "provider": "bedrock-workflow",
+  "resume_process_id": 648080,
+  "scenario": "rush-order",
+  "session_interrupt_restored": true,
+  "start_process_id": 648008,
+  "workflow_passed": true
+}
