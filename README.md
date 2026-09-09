@@ -2,7 +2,7 @@
 
 > A Strands-powered production scheduling agent for small embroidery and decorated-apparel shops.
 
-**Status:** **VALIDATED FEASIBILITY SPIKE** — paired Amazon Bedrock rejection and exact-approval workflows passed
+**Status:** **SUBMISSION CANDIDATE — validated locally, on live Bedrock, and deployed to AgentCore Runtime** — paired rejection/exact-approval workflows passed on all three paths; see [`evidence/`](evidence/) and [`deploy/agentcore/README.md`](deploy/agentcore/README.md)
 
 **Hackathon:** Agents for Humans — Professional Agents track
 
@@ -25,7 +25,7 @@ uv sync --locked
 uv run production-orchestrator-demo
 ```
 
-Open `http://127.0.0.1:8765`. The demo runs the **complete seven-tool Strands workflow**: the agent checks orders, inventory, and machine capacity through real tools, analyzes blockers with the deterministic planner, persists an immutable hash-addressed proposal, drafts unsent communications, and stops at a real Strands interrupt before the consequential write. The page renders the recorded tool trail as an activity feed, a before/after production board, the readable message drafts, and the exact decision consequences. Choose **Keep current schedule** or **Approve coordinated plan** and a fresh process reconstructs the persisted session and resumes the official interrupt.
+Open `http://127.0.0.1:8765`. The demo runs the **complete eight-tool Strands workflow**: the agent reads the customer email through a validated intake tool, checks orders, inventory, and machine capacity through real tools, analyzes blockers with the deterministic planner, persists an immutable hash-addressed proposal, drafts unsent communications, and stops at a real Strands interrupt before the consequential write. The page renders the recorded tool trail as an activity feed, a before/after production board, the readable message drafts, and the exact decision consequences. Choose **Keep current schedule** or **Approve coordinated plan** and a fresh process reconstructs the persisted session and resumes the official interrupt.
 
 Three synthetic scenarios are selectable from the page — a rush order with a capacity conflict and thread shortage, a team-jersey order that displaces two smaller jobs, and a metallic monogram batch with a material shortage. Expand **Technical proof** to inspect the immutable proposal hash, model/provider facts, distinct start/resume process IDs, and the full audit chain.
 
